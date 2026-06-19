@@ -1,10 +1,12 @@
 import SwiftUI
 import AppKit
 
-/// A small settings sheet: pin behavior, data location, and quit.
+/// A small settings sheet: pin behavior, editor font size, Markdown export,
+/// data location, and quit.
 struct SettingsView: View {
     @EnvironmentObject var store: WeekStore
     @State private var pinned = isPinnedSetting
+    @AppStorage(SettingsKey.fontSize) private var fontSize: Double = defaultFontSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -36,6 +38,25 @@ struct SettingsView: View {
 
                 Rectangle().fill(Style.divider).frame(height: 1)
 
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Editor font size")
+                            .font(.system(size: 14))
+                            .foregroundColor(Style.primaryText)
+                        Text("\(Int(fontSize)) pt")
+                            .font(.system(size: 12))
+                            .foregroundColor(Style.secondaryText)
+                    }
+                    Spacer()
+                    Stepper("", value: $fontSize, in: 11...22, step: 1)
+                        .labelsHidden()
+                }
+
+                Rectangle().fill(Style.divider).frame(height: 1)
+
+                Button("Export all weeks to Markdown…") { store.exportMarkdownToFile() }
+                    .buttonStyle(SheetButtonStyle())
+
                 Button("Reveal data file in Finder") { revealData() }
                     .buttonStyle(SheetButtonStyle())
 
@@ -46,7 +67,7 @@ struct SettingsView: View {
             }
             .padding(24)
         }
-        .frame(width: 460, height: 360)
+        .frame(width: 460, height: 420)
         .background(
             ZStack {
                 VisualEffectView(material: .hudWindow)

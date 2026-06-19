@@ -1,8 +1,7 @@
 import SwiftUI
 
-/// The row of seven day tabs. The active day drives the Tasks panel. Each tab
-/// shows the count of completed tasks for that day (omitted when zero) and a
-/// "…" menu for bulk actions.
+/// The row of seven day tabs. The active day drives the day panel. Each tab
+/// shows the count of completed checkboxes for that day (omitted when zero).
 struct DayTabsView: View {
     @EnvironmentObject var store: WeekStore
 
@@ -19,7 +18,6 @@ struct DayTabsView: View {
 
     private func tab(_ day: Weekday) -> some View {
         let isActive = store.activeDay == day
-        let isFocused = store.region == .dayTabs && store.activeDay == day
         let completed = store.completedTaskCount(day)
 
         return HStack(spacing: 7) {
@@ -40,7 +38,6 @@ struct DayTabsView: View {
             RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .fill(isActive ? Style.selectionFill : Style.rowFill)
         )
-        .focusRing(isFocused, corner: 9)
         .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         .onTapGesture { store.selectTab(day) }
     }

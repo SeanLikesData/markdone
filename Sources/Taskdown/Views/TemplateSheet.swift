@@ -1,42 +1,33 @@
 import SwiftUI
 
-/// An editable row backing a single template name. Has identity so it can be
-/// listed and focused while typing.
-private struct EditRow: Identifiable {
-    let id = UUID()
-    var text: String
-}
-
-/// The Weekly Template editor. Edits a local copy and writes it back only on
-/// Save, so Cancel discards. Template changes apply to new weeks only; Big
-/// Three is per-week and is not part of the template.
+/// The Weekly Template editor. Each region is a Markdown block that seeds the
+/// matching block of every new week. Edits a local copy and writes it back only
+/// on Save, so Cancel discards.
 struct TemplateSheet: View {
     @EnvironmentObject var store: WeekStore
+    @AppStorage(SettingsKey.fontSize) private var fontSize: Double = defaultFontSize
 
-    @State private var habits: [EditRow] = []
-    @State private var weekTasks: [EditRow] = []
-    @State private var dayTasks: [Int: [EditRow]] = [:]
+    @State private var bigThree: String = ""
+    @State private var weekTasks: String = ""
+    @State private var dayMarkdown: [Int: String] = [:]
     @State private var selectedDay: Weekday = .monday
-    @FocusState private var focusedRow: UUID?
 
     var body: some View {
         VStack(spacing: 0) {
             header
 
-            ScrollView {
-                HStack(alignment: .top, spacing: 0) {
-                    leftColumn
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
+            HStack(alignment: .top, spacing: 0) {
+                leftColumn
+                    .frame(width: 320)
 
-                    Rectangle().fill(Style.divider).frame(width: 1)
+                Rectangle().fill(Style.divider).frame(width: 1)
 
-                    rightColumn
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
-                }
-                .padding(24)
+                rightColumn
+                    .frame(maxWidth: .infinity)
             }
+            .padding(20)
         }
-        .frame(width: 780, height: 660)
+        .frame(width: 820, height: 660)
         .background(
             ZStack {
                 VisualEffectView(material: .hudWindow)
@@ -61,73 +52,46 @@ struct TemplateSheet: View {
                 Button("Save") { saveAndClose() }
                     .buttonStyle(SheetButtonStyle(prominent: true))
             }
-            Text("Template changes apply to new weeks only. Big Three items are set separately for each week.")
+            Text("Template blocks seed every new week. Write tasks with checkboxes like \"[ ] task\". Changes apply to new weeks only.")
                 .font(.system(size: 13))
                 .foregroundColor(Style.secondaryText)
         }
         .padding(.horizontal, 24)
         .padding(.top, 22)
-        .padding(.bottom, 16)
+        .padding(.bottom, 10)
     }
 
     // MARK: - Left column
 
     private var leftColumn: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            VStack(alignment: .leading, spacing: 12) {
-                SectionHeader(title: "Daily Habits", keyLetter: "H") {
-                    let row = EditRow(text: "")
-                    habits.append(row)
-                    focusedRow = row.id
-                }
-                ForEach($habits) { $row in
-                    editRow($row, markerStyle: .checkbox) {
-                        habits.removeAll { $0.id == row.id }
-                    }
-                }
-            }
-
-            Rectangle().fill(Style.divider).frame(height: 1)
-
-            VStack(alignment: .leading, spacing: 12) {
-                SectionHeader(title: "This Week", keyLetter: "W") {
-                    let row = EditRow(text: "")
-                    weekTasks.append(row)
-                    focusedRow = row.id
-                }
-                ForEach($weekTasks) { $row in
-                    editRow($row, markerStyle: .circle) {
-                        weekTasks.removeAll { $0.id == row.id }
-                    }
-                }
-            }
+        VStack(alignment: .leading, spacing: 14) {
+            MarkdownField(title: "Big Three", text: $bigThree, fontSize: fontSize)
+                .frame(height: 150)
+            MarkdownField(title: "This Week", text: $weekTasks, fontSize: fontSize)
+                .frame(maxHeight: .infinity)
         }
-        .padding(.trailing, 24)
+        .padding(.trailing, 20)
     }
 
     // MARK: - Right column
 
     private var rightColumn: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            SectionHeader(title: "Tasks", keyLetter: "N") {
-                let row = EditRow(text: "")
-                dayTasks[selectedDay.rawValue, default: []].append(row)
-                focusedRow = row.id
-            }
-
+        VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 6) {
                 ForEach(Weekday.allCases) { day in
                     dayTab(day)
                 }
             }
 
-            ForEach(bindingForDay(selectedDay)) { $row in
-                editRow($row, markerStyle: .circle) {
-                    dayTasks[selectedDay.rawValue]?.removeAll { $0.id == row.id }
-                }
-            }
+            MarkdownField(
+                title: selectedDay.fullName,
+                text: bindingForDay(selectedDay),
+                fontSize: fontSize,
+                resetID: "template-day-\(selectedDay.rawValue)"
+            )
+            .frame(maxHeight: .infinity)
         }
-        .padding(.leading, 24)
+        .padding(.leading, 20)
     }
 
     private func dayTab(_ day: Weekday) -> some View {
@@ -138,46 +102,18 @@ struct TemplateSheet: View {
             .frame(minWidth: 16)
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(isActive ? Style.selectionFill : Style.rowFill)
-        )
-        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .onTapGesture { selectedDay = day }
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(isActive ? Style.selectionFill : Style.rowFill)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .onTapGesture { selectedDay = day }
     }
 
-    // MARK: - Editable row
-
-    private func editRow(_ row: Binding<EditRow>, markerStyle: MarkerStyle, onDelete: @escaping () -> Void) -> some View {
-        HStack(spacing: 11) {
-            Marker(style: markerStyle, done: false)
-            TextField("New item", text: row.text)
-                .textFieldStyle(.plain)
-                .font(.system(size: 14))
-                .foregroundColor(Style.primaryText)
-                .focused($focusedRow, equals: row.wrappedValue.id)
-            Spacer(minLength: 4)
-            Button(action: onDelete) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(Style.secondaryText)
-                    .frame(width: 22, height: 22)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, Style.rowHPadding)
-        .padding(.vertical, Style.rowVPadding)
-        .background(
-            RoundedRectangle(cornerRadius: Style.rowCorner, style: .continuous)
-                .fill(Style.rowFill)
-        )
-    }
-
-    private func bindingForDay(_ day: Weekday) -> Binding<[EditRow]> {
+    private func bindingForDay(_ day: Weekday) -> Binding<String> {
         Binding(
-            get: { dayTasks[day.rawValue] ?? [] },
-            set: { dayTasks[day.rawValue] = $0 }
+            get: { dayMarkdown[day.rawValue] ?? "" },
+            set: { dayMarkdown[day.rawValue] = $0 }
         )
     }
 
@@ -185,27 +121,27 @@ struct TemplateSheet: View {
 
     private func loadFromTemplate() {
         let template = store.template
-        habits = template.habits.map { EditRow(text: $0) }
-        weekTasks = template.weekTasks.map { EditRow(text: $0) }
-        var byDay: [Int: [EditRow]] = [:]
+        bigThree = template.bigThreeMarkdown
+        weekTasks = template.weekTasksMarkdown
+        var byDay: [Int: String] = [:]
         for day in Weekday.allCases {
-            byDay[day.rawValue] = template.tasks(for: day).map { EditRow(text: $0) }
+            byDay[day.rawValue] = template.markdown(for: day)
         }
-        dayTasks = byDay
+        dayMarkdown = byDay
     }
 
     private func saveAndClose() {
         var template = Template()
-        template.habits = habits.map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-        template.weekTasks = weekTasks.map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-        var byDay: [Int: [String]] = [:]
+        template.bigThreeMarkdown = bigThree
+        template.weekTasksMarkdown = weekTasks
+        var byDay: [Int: String] = [:]
         for day in Weekday.allCases {
-            let names = (dayTasks[day.rawValue] ?? [])
-                .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-            if !names.isEmpty { byDay[day.rawValue] = names }
+            let markdown = dayMarkdown[day.rawValue] ?? ""
+            if !markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                byDay[day.rawValue] = markdown
+            }
         }
-        template.dayTasks = byDay
+        template.dayMarkdown = byDay
         store.saveTemplate(template)
         store.activeSheet = nil
     }

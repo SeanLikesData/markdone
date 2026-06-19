@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The whole popover: top bar, day tabs, the two main panels, and the bottom
-/// bar, on a dark frosted surface. Modal sheets (template, settings, help)
+/// The whole popover: day tabs, the left column (Big Three and This Week), the
+/// day panel, and the bottom bar, on a dark frosted surface. Modal sheets
 /// present over it.
 struct ContentView: View {
     @EnvironmentObject var store: WeekStore
@@ -15,14 +15,14 @@ struct ContentView: View {
                 .frame(height: 1)
 
             HStack(spacing: 0) {
-                ThisWeekPanel()
-                    .frame(maxWidth: .infinity)
+                LeftColumn()
+                    .frame(width: 300)
 
                 Rectangle()
                     .fill(Style.divider)
                     .frame(width: 1)
 
-                TasksPanel()
+                DayPanel()
                     .frame(maxWidth: .infinity)
             }
 

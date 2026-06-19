@@ -18,94 +18,67 @@ enum Weekday: Int, Codable, CaseIterable, Identifiable, Hashable {
         case .sunday: return "Sun"
         }
     }
-}
 
-/// A single task or habit row. The same type backs Big Three slots, This Week
-/// tasks, per-day tasks, and per-day habits. `done` is the only mutable state
-/// beyond the title.
-struct TaskItem: Identifiable, Codable, Hashable {
-    var id: UUID = UUID()
-    var title: String
-    var done: Bool = false
-
-    init(id: UUID = UUID(), title: String, done: Bool = false) {
-        self.id = id
-        self.title = title
-        self.done = done
+    /// Full name, used in the Markdown export and as a day heading.
+    var fullName: String {
+        switch self {
+        case .monday: return "Monday"
+        case .tuesday: return "Tuesday"
+        case .wednesday: return "Wednesday"
+        case .thursday: return "Thursday"
+        case .friday: return "Friday"
+        case .saturday: return "Saturday"
+        case .sunday: return "Sunday"
+        }
     }
 }
 
-/// One day inside a week. Holds that day's own habit checkboxes (seeded from
-/// the template's habit names) and that day's scheduled tasks.
+/// One day inside a week. Its tasks and notes live in a single Markdown block
+/// that the user edits directly. Checkboxes (`[ ]` / `[x]`) inside the block are
+/// the tasks; everything else is free-form notes and structure.
 struct DayPlan: Codable, Hashable {
     var weekday: Weekday
-    var habits: [TaskItem] = []
-    var tasks: [TaskItem] = []
+    var markdown: String = ""
 }
 
-/// One saved week. `weekStart` is always the Monday of that week.
-///
-/// `bigThree` is per-week and starts empty (the template never seeds it).
-/// `weekTasks` are undated tasks for the week — created when there is no
-/// specific day to do them on, and later pushed into a day. Each `DayPlan`
-/// carries its own habits and tasks.
+/// One saved week. `weekStart` is always the Monday of that week. Every region
+/// is a Markdown block: the per-week Big Three priorities, the undated This Week
+/// tasks, and one block per day.
 struct Week: Identifiable, Codable, Hashable {
     var id: UUID = UUID()
     var weekStart: Date
-    var bigThree: [TaskItem] = [
-        TaskItem(title: ""),
-        TaskItem(title: ""),
-        TaskItem(title: "")
-    ]
-    var weekTasks: [TaskItem] = []
+    var bigThreeMarkdown: String = ""
+    var weekTasksMarkdown: String = ""
     var days: [DayPlan] = Weekday.allCases.map { DayPlan(weekday: $0) }
 
     func day(_ weekday: Weekday) -> DayPlan {
         days.first { $0.weekday == weekday } ?? DayPlan(weekday: weekday)
     }
 
-    /// Completed and total counts across every task-like item in the week:
-    /// Big Three (non-empty slots only), This Week tasks, and every day's
-    /// tasks and habits. Used by the top bar's `done/total` badge.
+    /// Completed and total checkbox counts across every block in the week. Used
+    /// by the week pill and the Weeks panel.
     var completion: (done: Int, total: Int) {
         var done = 0
         var total = 0
-        for item in bigThree where !item.title.isEmpty {
-            total += 1
-            if item.done { done += 1 }
-        }
-        for item in weekTasks {
-            total += 1
-            if item.done { done += 1 }
-        }
-        for day in days {
-            for item in day.tasks {
-                total += 1
-                if item.done { done += 1 }
-            }
-            for item in day.habits {
-                total += 1
-                if item.done { done += 1 }
-            }
+        for markdown in [bigThreeMarkdown, weekTasksMarkdown] + days.map(\.markdown) {
+            let counts = MarkdownTasks.counts(in: markdown)
+            done += counts.done
+            total += counts.total
         }
         return (done, total)
     }
 }
 
-/// The weekly template. Edits apply to new weeks only. It stores names rather
-/// than live `TaskItem`s, because a template entry produces a fresh, unchecked
-/// item in each new week.
+/// The weekly template. Each field is a Markdown block that seeds the matching
+/// block of every new week. Edits apply to new weeks only.
 struct Template: Codable, Hashable {
-    /// Daily habit names. Every day of a new week gets one unchecked habit per
-    /// name.
-    var habits: [String] = []
-    /// This Week (undated) recurring task names.
-    var weekTasks: [String] = []
-    /// Recurring task names per day.
-    var dayTasks: [Int: [String]] = [:]
+    var bigThreeMarkdown: String = ""
+    var weekTasksMarkdown: String = ""
+    /// Per-day seed blocks, keyed by `Weekday.rawValue`.
+    var dayMarkdown: [Int: String] = [:]
 
-    func tasks(for weekday: Weekday) -> [String] {
-        dayTasks[weekday.rawValue] ?? []
+    func markdown(for weekday: Weekday) -> String {
+        dayMarkdown[weekday.rawValue] ?? ""
     }
 }
 

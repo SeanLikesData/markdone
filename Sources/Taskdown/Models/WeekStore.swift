@@ -2,13 +2,6 @@ import SwiftUI
 import AppKit
 import os
 
-/// The three keyboard-focus regions, in Tab-cycle order.
-enum Region: Int {
-    case dayTabs
-    case thisWeek
-    case tasks
-}
-
 /// Which modal sheet, if any, is open over the main content.
 enum ActiveSheet: Identifiable {
     case weeks
@@ -25,50 +18,25 @@ enum ActiveSheet: Identifiable {
     }
 }
 
-/// Where a given item lives inside the current week. Returned by `locate(_:)`
-/// so every operation can switch on the item's kind.
-enum ItemLocation: Equatable {
-    case bigThree(Int)
-    case weekTask(Int)
-    case dayTask(Weekday, Int)
-    case habit(Weekday, Int)
-}
-
 enum SaveState {
     case saved
     case saving
 }
 
-/// The single source of truth: all saved weeks, the template, the current
-/// selection, the keyboard-focus state, and local persistence.
+/// The single source of truth: all saved weeks, the template, the current week
+/// and day selection, and local persistence. Every task region is a Markdown
+/// string edited directly in a text field; the store exposes a `Binding` to each
+/// and saves on change.
 @MainActor
 final class WeekStore: ObservableObject {
     @Published private(set) var data = TaskdownData()
     @Published var selectedWeekID: UUID = UUID()
     @Published var activeDay: Weekday = .monday
 
-    // Keyboard focus and selection.
-    @Published var region: Region = .thisWeek
-    @Published var selectedID: UUID?
-    @Published var editingID: UUID?
-    /// The in-progress edit text for the row being renamed.
-    @Published var draftText: String = ""
-
     @Published var activeSheet: ActiveSheet?
     @Published private(set) var saveState: SaveState = .saved
 
-    /// Tracks a freshly created task so an empty title on commit removes it.
-    private var newItemID: UUID?
-
-    /// Remembers the last selected row in each column so moving away and back
-    /// (to the other column or up to the day tabs) restores the position.
-    private var lastSelection: [Region: UUID] = [:]
-    /// The column to drop back into when leaving the day tabs with Down.
-    private var returnColumn: Region = .tasks
-    /// The habit last focused, so returning to the habits row restores it.
-    private var lastHabitID: UUID?
-
-    /// Closure the AppDelegate sets so Escape can close the popover.
+    /// Closure the AppDelegate sets so Cmd+W can close the popover.
     var onRequestClose: (() -> Void)?
 
     private let logger = Logger(subsystem: "com.taskdown.app", category: "store")
@@ -90,7 +58,6 @@ final class WeekStore: ObservableObject {
     init() {
         load()
         ensureSomeWeek()
-        selectDefaultFocus()
     }
 
     private func load() {
@@ -104,24 +71,22 @@ final class WeekStore: ObservableObject {
         }
     }
 
-    /// Make sure at least the current calendar week exists, and select a week.
+    /// Make sure at least the current calendar week exists, and select a week
+    /// and the day that matches today.
     private func ensureSomeWeek() {
         let thisMonday = WeekMath.mondayOfWeek(containing: Date())
         if data.weeks.isEmpty {
             data.weeks.append(seededWeek(monday: thisMonday))
             scheduleSave()
         }
-        // Prefer selecting the current calendar week if present, else the latest.
         let sorted = weeksSorted
         if let current = sorted.first(where: { $0.weekStart == thisMonday }) {
             selectedWeekID = current.id
         } else if let latest = sorted.last {
             selectedWeekID = latest.id
         }
-        // Default the active day to today when viewing the current week.
-        let todayWeekday = weekdayOfToday()
         if currentWeek?.weekStart == thisMonday {
-            activeDay = todayWeekday
+            activeDay = weekdayOfToday()
         } else {
             activeDay = .monday
         }
@@ -157,7 +122,6 @@ final class WeekStore: ObservableObject {
     private func selectWeek(_ week: Week) {
         selectedWeekID = week.id
         activeDay = .monday
-        selectDefaultFocus()
     }
 
     /// Switch to a week by id (used by the Weeks panel).
@@ -175,7 +139,6 @@ final class WeekStore: ObservableObject {
         } else {
             nextMonday = WeekMath.mondayOfWeek(containing: Date())
         }
-        // Avoid duplicating a Monday that already exists.
         if let existing = data.weeks.first(where: { $0.weekStart == nextMonday }) {
             selectWeek(existing)
             return
@@ -217,22 +180,19 @@ final class WeekStore: ObservableObject {
         scheduleSave()
     }
 
-    /// Build a new week from the template: empty Big Three, This Week tasks
-    /// and each day's habits and tasks seeded from the template names.
+    /// Build a new week from the template: each block seeded from the matching
+    /// template block.
     private func seededWeek(monday: Date) -> Week {
         var week = Week(weekStart: monday)
-        week.weekTasks = data.template.weekTasks.map { TaskItem(title: $0) }
+        week.bigThreeMarkdown = data.template.bigThreeMarkdown
+        week.weekTasksMarkdown = data.template.weekTasksMarkdown
         week.days = Weekday.allCases.map { weekday in
-            DayPlan(
-                weekday: weekday,
-                habits: data.template.habits.map { TaskItem(title: $0) },
-                tasks: data.template.tasks(for: weekday).map { TaskItem(title: $0) }
-            )
+            DayPlan(weekday: weekday, markdown: data.template.markdown(for: weekday))
         }
         return week
     }
 
-    // MARK: - Mutating the current week
+    // MARK: - Editing the current week's Markdown
 
     private func withCurrentWeek(_ mutate: (inout Week) -> Void) {
         guard let i = data.weeks.firstIndex(where: { $0.id == selectedWeekID }) else { return }
@@ -240,495 +200,61 @@ final class WeekStore: ObservableObject {
         scheduleSave()
     }
 
-    /// Find where an item id lives in the current week.
-    func locate(_ id: UUID) -> ItemLocation? {
-        guard let week = currentWeek else { return nil }
-        if let i = week.bigThree.firstIndex(where: { $0.id == id }) { return .bigThree(i) }
-        if let i = week.weekTasks.firstIndex(where: { $0.id == id }) { return .weekTask(i) }
-        for day in week.days {
-            if let i = day.habits.firstIndex(where: { $0.id == id }) { return .habit(day.weekday, i) }
-            if let i = day.tasks.firstIndex(where: { $0.id == id }) { return .dayTask(day.weekday, i) }
-        }
-        return nil
+    func setBigThreeMarkdown(_ value: String) {
+        withCurrentWeek { $0.bigThreeMarkdown = value }
     }
 
-    func toggleDone(_ id: UUID) {
-        guard let location = locate(id) else { return }
+    func setWeekTasksMarkdown(_ value: String) {
+        withCurrentWeek { $0.weekTasksMarkdown = value }
+    }
+
+    func setDayMarkdown(_ weekday: Weekday, _ value: String) {
         withCurrentWeek { week in
-            switch location {
-            case .bigThree(let i):
-                guard !week.bigThree[i].title.isEmpty else { return }
-                week.bigThree[i].done.toggle()
-            case .weekTask(let i):
-                week.weekTasks[i].done.toggle()
-            case .dayTask(let day, let i):
-                if let d = week.days.firstIndex(where: { $0.weekday == day }) {
-                    week.days[d].tasks[i].done.toggle()
-                }
-            case .habit(let day, let i):
-                if let d = week.days.firstIndex(where: { $0.weekday == day }) {
-                    week.days[d].habits[i].done.toggle()
-                }
+            if let d = week.days.firstIndex(where: { $0.weekday == weekday }) {
+                week.days[d].markdown = value
             }
         }
     }
 
-    func setTitle(_ id: UUID, _ title: String) {
-        guard let location = locate(id) else { return }
-        withCurrentWeek { week in
-            switch location {
-            case .bigThree(let i): week.bigThree[i].title = title
-            case .weekTask(let i): week.weekTasks[i].title = title
-            case .dayTask(let day, let i):
-                if let d = week.days.firstIndex(where: { $0.weekday == day }) {
-                    week.days[d].tasks[i].title = title
-                }
-            case .habit(let day, let i):
-                if let d = week.days.firstIndex(where: { $0.weekday == day }) {
-                    week.days[d].habits[i].title = title
-                }
-            }
-        }
+    /// `Binding`s the Markdown fields edit through. Reading falls back to an
+    /// empty string when no week is selected, which should not happen in
+    /// practice because `init` always selects one.
+    func bigThreeBinding() -> Binding<String> {
+        Binding(
+            get: { self.currentWeek?.bigThreeMarkdown ?? "" },
+            set: { self.setBigThreeMarkdown($0) }
+        )
     }
 
-    // MARK: - Adding tasks
-
-    /// Add a new This Week (undated) task and begin editing it.
-    func addWeekTask() {
-        let item = TaskItem(title: "")
-        withCurrentWeek { $0.weekTasks.append(item) }
-        region = .thisWeek
-        selectedID = item.id
-        beginEditing(item.id, isNew: true)
+    func weekTasksBinding() -> Binding<String> {
+        Binding(
+            get: { self.currentWeek?.weekTasksMarkdown ?? "" },
+            set: { self.setWeekTasksMarkdown($0) }
+        )
     }
 
-    /// Add a new task to the active day and begin editing it.
-    func addDayTask() {
-        let item = TaskItem(title: "")
-        withCurrentWeek { week in
-            if let d = week.days.firstIndex(where: { $0.weekday == activeDay }) {
-                week.days[d].tasks.append(item)
-            }
-        }
-        region = .tasks
-        selectedID = item.id
-        beginEditing(item.id, isNew: true)
+    func dayBinding(_ weekday: Weekday) -> Binding<String> {
+        Binding(
+            get: { self.currentWeek?.day(weekday).markdown ?? "" },
+            set: { self.setDayMarkdown(weekday, $0) }
+        )
     }
 
-    // MARK: - Editing lifecycle
-
-    func beginEditing(_ id: UUID, isNew: Bool = false) {
-        // Habits are template-driven; their titles are not editable here.
-        if case .habit = locate(id) { return }
-        selectedID = id
-        editingID = id
-        newItemID = isNew ? id : nil
-        draftText = currentTitle(of: id) ?? ""
-    }
-
-    private func currentTitle(of id: UUID) -> String? {
-        guard let location = locate(id), let week = currentWeek else { return nil }
-        switch location {
-        case .bigThree(let i): return week.bigThree[i].title
-        case .weekTask(let i): return week.weekTasks[i].title
-        case .dayTask(let day, let i): return week.day(day).tasks[i].title
-        case .habit(let day, let i): return week.day(day).habits[i].title
-        }
-    }
-
-    /// Begin renaming the currently selected item, if it is renameable.
-    func beginEditingSelected() {
-        guard let id = selectedID else { return }
-        beginEditing(id, isNew: false)
-    }
-
-    /// Accept the in-progress edit (from the field's draft text). A brand-new
-    /// task left empty is discarded.
-    func commitEditing() {
-        guard let id = editingID else { return }
-        let trimmed = draftText.trimmingCharacters(in: .whitespacesAndNewlines)
-        setTitle(id, trimmed)
-        if id == newItemID, trimmed.isEmpty {
-            delete(id)
-        }
-        editingID = nil
-        newItemID = nil
-    }
-
-    func cancelEditing() {
-        guard let id = editingID else { return }
-        if id == newItemID {
-            delete(id)
-        }
-        editingID = nil
-        newItemID = nil
-    }
-
-    // MARK: - Deleting
-
-    /// Delete the selected item. Big Three slots are cleared rather than
-    /// removed; habits are template-driven and are not deleted here.
-    func deleteSelected() {
-        guard let id = selectedID, let location = locate(id) else { return }
-        switch location {
-        case .bigThree(let i):
-            withCurrentWeek { $0.bigThree[i] = TaskItem(title: "") }
-        case .habit:
-            return
-        case .weekTask, .dayTask:
-            delete(id)
-        }
-    }
-
-    private func delete(_ id: UUID) {
-        guard let location = locate(id) else { return }
-        // Choose a neighbor to select after removal.
-        let order = orderedIDs(for: region)
-        let removingIndex = order.firstIndex(of: id)
-
-        withCurrentWeek { week in
-            switch location {
-            case .weekTask(let i): week.weekTasks.remove(at: i)
-            case .dayTask(let day, let i):
-                if let d = week.days.firstIndex(where: { $0.weekday == day }) {
-                    week.days[d].tasks.remove(at: i)
-                }
-            case .bigThree, .habit:
-                break
-            }
-        }
-
-        // Reselect a sensible neighbor.
-        let newOrder = orderedIDs(for: region)
-        if newOrder.isEmpty {
-            selectedID = nil
-        } else if let idx = removingIndex {
-            selectedID = newOrder[min(idx, newOrder.count - 1)]
-        } else {
-            selectedID = newOrder.first
-        }
-    }
-
-    // MARK: - Moving along the chain (This Week <-> days)
-
-    /// Move the selected task one step along the chain
-    /// `This Week -> Mon -> Tue -> ... -> Sun`. The active day follows the
-    /// task so it can be pushed further. Big Three slots and habits do not move.
-    func moveSelectedAlongChain(forward: Bool) {
-        guard let id = selectedID, let location = locate(id) else { return }
-
-        // Current position: 0 = This Week, 1..7 = Monday..Sunday.
-        let position: Int
-        let item: TaskItem
-        switch location {
-        case .weekTask(let i):
-            position = 0
-            item = currentWeek!.weekTasks[i]
-        case .dayTask(let day, let i):
-            position = day.rawValue + 1
-            item = currentWeek!.day(day).tasks[i]
-        case .bigThree, .habit:
-            return
-        }
-
-        let newPosition = forward ? min(position + 1, 7) : max(position - 1, 0)
-        if newPosition == position { return }
-
-        // Remove from old container.
-        withCurrentWeek { week in
-            switch location {
-            case .weekTask(let i): week.weekTasks.remove(at: i)
-            case .dayTask(let day, let i):
-                if let d = week.days.firstIndex(where: { $0.weekday == day }) {
-                    week.days[d].tasks.remove(at: i)
-                }
-            default: break
-            }
-            // Insert into new container.
-            if newPosition == 0 {
-                week.weekTasks.append(item)
-            } else {
-                let weekday = Weekday(rawValue: newPosition - 1) ?? .monday
-                if let d = week.days.firstIndex(where: { $0.weekday == weekday }) {
-                    week.days[d].tasks.append(item)
-                }
-            }
-        }
-
-        // Follow the task to its new home.
-        if newPosition == 0 {
-            region = .thisWeek
-        } else {
-            activeDay = Weekday(rawValue: newPosition - 1) ?? .monday
-            region = .tasks
-        }
-        selectedID = item.id
-    }
-
-    /// Move a specific item to an absolute chain position (0 = This Week,
-    /// 1...7 = Monday...Sunday). Used by the row "Move to" menu.
-    func moveItem(_ id: UUID, toPosition pos: Int) {
-        guard let location = locate(id) else { return }
-        let item: TaskItem
-        switch location {
-        case .weekTask(let i): item = currentWeek!.weekTasks[i]
-        case .dayTask(let day, let i): item = currentWeek!.day(day).tasks[i]
-        case .bigThree, .habit: return
-        }
-        let clamped = max(0, min(pos, 7))
-        withCurrentWeek { week in
-            switch location {
-            case .weekTask(let i): week.weekTasks.remove(at: i)
-            case .dayTask(let day, let i):
-                if let d = week.days.firstIndex(where: { $0.weekday == day }) {
-                    week.days[d].tasks.remove(at: i)
-                }
-            default: break
-            }
-            if clamped == 0 {
-                week.weekTasks.append(item)
-            } else {
-                let weekday = Weekday(rawValue: clamped - 1) ?? .monday
-                if let d = week.days.firstIndex(where: { $0.weekday == weekday }) {
-                    week.days[d].tasks.append(item)
-                }
-            }
-        }
-        if clamped == 0 {
-            region = .thisWeek
-        } else {
-            activeDay = Weekday(rawValue: clamped - 1) ?? .monday
-            region = .tasks
-        }
-        selectedID = item.id
-    }
-
-    // MARK: - Reordering within a list (Shift+Up/Down)
-
-    func reorderSelected(up: Bool) {
-        guard let id = selectedID, let location = locate(id) else { return }
-        withCurrentWeek { week in
-            switch location {
-            case .weekTask(let i):
-                let j = up ? i - 1 : i + 1
-                guard week.weekTasks.indices.contains(j) else { return }
-                week.weekTasks.swapAt(i, j)
-            case .dayTask(let day, let i):
-                guard let d = week.days.firstIndex(where: { $0.weekday == day }) else { return }
-                let j = up ? i - 1 : i + 1
-                guard week.days[d].tasks.indices.contains(j) else { return }
-                week.days[d].tasks.swapAt(i, j)
-            case .bigThree, .habit:
-                return
-            }
-        }
-    }
-
-    // MARK: - Focus and selection helpers
-
-    /// The ordered list of focusable item ids for a region in the current week.
-    func orderedIDs(for region: Region) -> [UUID] {
-        guard let week = currentWeek else { return [] }
-        switch region {
-        case .dayTabs:
-            return []
-        case .thisWeek:
-            return week.bigThree.map { $0.id } + week.weekTasks.map { $0.id }
-        case .tasks:
-            let day = week.day(activeDay)
-            return day.habits.map { $0.id } + day.tasks.map { $0.id }
-        }
-    }
-
-    private func selectDefaultFocus() {
-        region = .thisWeek
-        selectedID = orderedIDs(for: .thisWeek).first
-    }
-
-    /// Habit and task ids for the active day, kept separate because the habits
-    /// form one horizontal row at the top of the Tasks column.
-    var activeDayHabitIDs: [UUID] { currentWeek?.day(activeDay).habits.map { $0.id } ?? [] }
-    var activeDayTaskIDs: [UUID] { currentWeek?.day(activeDay).tasks.map { $0.id } ?? [] }
-
-    /// Up/Down. Within a column, move the selection one row. Pressing Up at the
-    /// top of a column jumps to the day tabs; pressing Down on the day tabs
-    /// drops back into the column you came from. In the Tasks column the whole
-    /// habits row is a single vertical stop (move between habits with Left/Right).
-    func navigateVertical(up: Bool) {
-        switch region {
-        case .dayTabs:
-            if !up { returnFromDayTabs() }
-        case .thisWeek:
-            stepWithinList(up: up, order: orderedIDs(for: .thisWeek))
-        case .tasks:
-            navigateTasksVertical(up: up)
-        }
-    }
-
-    private func stepWithinList(up: Bool, order: [UUID]) {
-        guard !order.isEmpty else {
-            if up { goToDayTabs(from: region) }
-            return
-        }
-        guard let current = selectedID, let idx = order.firstIndex(of: current) else {
-            selectedID = order.first
-            return
-        }
-        let next = up ? idx - 1 : idx + 1
-        if order.indices.contains(next) {
-            selectedID = order[next]
-        } else if up {
-            goToDayTabs(from: region)
-        }
-    }
-
-    private func navigateTasksVertical(up: Bool) {
-        let habits = activeDayHabitIDs
-        let tasks = activeDayTaskIDs
-        let onHabitRow = selectedID.map { habits.contains($0) } ?? false
-
-        if onHabitRow {
-            if up {
-                goToDayTabs(from: .tasks)
-            } else if let firstTask = tasks.first {
-                selectedID = firstTask
-            }
-            return
-        }
-
-        // Otherwise the focus is on a task row (or nothing yet).
-        guard let current = selectedID, let idx = tasks.firstIndex(of: current) else {
-            if let firstTask = tasks.first {
-                selectedID = firstTask
-            } else if up {
-                enterHabitRowOrTabs(habits)
-            }
-            return
-        }
-        let next = up ? idx - 1 : idx + 1
-        if tasks.indices.contains(next) {
-            selectedID = tasks[next]
-        } else if up {
-            // Above the first task: the habits row, or the day tabs if none.
-            enterHabitRowOrTabs(habits)
-        }
-        // Below the last task: stay put.
-    }
-
-    private func enterHabitRowOrTabs(_ habits: [UUID]) {
-        if habits.isEmpty {
-            goToDayTabs(from: .tasks)
-        } else {
-            enterHabitRow(habits)
-        }
-    }
-
-    private func enterHabitRow(_ habits: [UUID]) {
-        let target = (lastHabitID.flatMap { habits.contains($0) ? $0 : nil }) ?? habits.first
-        selectedID = target
-        lastHabitID = target
-    }
-
-    /// Left/Right. In the This Week column, Right moves to Tasks. In the Tasks
-    /// column on a task row, Left moves back to This Week. On the habits row,
-    /// Left/Right move between the habit chips, and Left past the first habit
-    /// exits to the This Week column. On the day tabs, switch the active day.
-    func navigateHorizontal(right: Bool) {
-        switch region {
-        case .dayTabs:
-            switchDay(forward: right)
-        case .thisWeek:
-            if right { focusColumn(.tasks) }
-        case .tasks:
-            navigateTasksHorizontal(right: right)
-        }
-    }
-
-    private func navigateTasksHorizontal(right: Bool) {
-        let habits = activeDayHabitIDs
-        if let current = selectedID, let idx = habits.firstIndex(of: current) {
-            // On the habits row: move between chips, exit left past the first.
-            let next = right ? idx + 1 : idx - 1
-            if habits.indices.contains(next) {
-                selectedID = habits[next]
-                lastHabitID = habits[next]
-            } else if !right {
-                focusColumn(.thisWeek)
-            }
-            // Right past the last habit: nothing (Tasks is the rightmost column).
-        } else {
-            // On a task row: Left returns to This Week.
-            if !right { focusColumn(.thisWeek) }
-        }
-    }
-
-    private func focusColumn(_ target: Region) {
-        if region == .thisWeek || region == .tasks {
-            lastSelection[region] = selectedID
-        }
-        region = target
-        restoreSelection(in: target)
-    }
-
-    private func goToDayTabs(from column: Region) {
-        lastSelection[column] = selectedID
-        returnColumn = column
-        region = .dayTabs
-    }
-
-    private func returnFromDayTabs() {
-        region = returnColumn
-        restoreSelection(in: returnColumn)
-    }
-
-    /// Select the remembered row for a column, or its first row if that row no
-    /// longer exists (for example after switching days).
-    private func restoreSelection(in column: Region) {
-        let order = orderedIDs(for: column)
-        if let saved = lastSelection[column], order.contains(saved) {
-            selectedID = saved
-        } else {
-            selectedID = order.first
-        }
-    }
-
-    func cycleRegion(forward: Bool) {
-        let all: [Region] = [.dayTabs, .thisWeek, .tasks]
-        guard let idx = all.firstIndex(of: region) else { return }
-        let nextIdx = (idx + (forward ? 1 : -1) + all.count) % all.count
-        region = all[nextIdx]
-        if region == .dayTabs {
-            selectedID = nil
-        } else {
-            let order = orderedIDs(for: region)
-            if let current = selectedID, order.contains(current) {
-                // keep selection
-            } else {
-                selectedID = order.first
-            }
-        }
-    }
+    // MARK: - Day selection
 
     func switchDay(forward: Bool) {
         let next = activeDay.rawValue + (forward ? 1 : -1)
         guard let day = Weekday(rawValue: next) else { return }
         activeDay = day
-        if region == .tasks {
-            selectedID = orderedIDs(for: .tasks).first
-        }
     }
 
     func selectTab(_ weekday: Weekday) {
         activeDay = weekday
-        if region == .tasks {
-            selectedID = orderedIDs(for: .tasks).first
-        }
     }
 
-    /// Count of completed tasks (not habits) for a day tab badge.
+    /// Count of completed checkboxes for a day, shown on its tab.
     func completedTaskCount(_ weekday: Weekday) -> Int {
-        guard let week = currentWeek else { return 0 }
-        return week.day(weekday).tasks.filter { $0.done }.count
+        MarkdownTasks.counts(in: currentWeek?.day(weekday).markdown ?? "").done
     }
 
     // MARK: - Template editing
@@ -736,6 +262,43 @@ final class WeekStore: ObservableObject {
     func saveTemplate(_ template: Template) {
         data.template = template
         scheduleSave()
+    }
+
+    // MARK: - Export
+
+    /// Assemble every saved week into one readable Markdown document.
+    func exportMarkdown() -> String {
+        var out = ""
+        for week in weeksSorted {
+            out += "# \(WeekMath.weekLabel(for: week.weekStart))\n\n"
+            appendSection(&out, title: "Big Three", body: week.bigThreeMarkdown)
+            appendSection(&out, title: "This Week", body: week.weekTasksMarkdown)
+            for weekday in Weekday.allCases {
+                appendSection(&out, title: weekday.fullName, body: week.day(weekday).markdown)
+            }
+        }
+        return out
+    }
+
+    private func appendSection(_ out: inout String, title: String, body: String) {
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        out += "## \(title)\n\n\(trimmed)\n\n"
+    }
+
+    /// Present a save panel and write the Markdown export to the chosen file.
+    func exportMarkdownToFile() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "taskdown-export.md"
+        panel.allowedContentTypes = [.init(filenameExtension: "md") ?? .plainText]
+        panel.canCreateDirectories = true
+        panel.title = "Export Tasks to Markdown"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try exportMarkdown().write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            logger.error("Failed to export Markdown: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     // MARK: - Saving

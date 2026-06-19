@@ -143,19 +143,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func closePopover() {
-        guard editingGuardAllowsClose() else { return }
+        store.flushPendingSave()
         panel?.orderOut(nil)
         removeGlobalMonitor()
         removeKeyMonitor()
-    }
-
-    /// If the user is mid-rename, Escape cancels the edit rather than closing.
-    private func editingGuardAllowsClose() -> Bool {
-        if store.editingID != nil {
-            store.cancelEditing()
-            return false
-        }
-        return true
     }
 
     private func positionPanel() {

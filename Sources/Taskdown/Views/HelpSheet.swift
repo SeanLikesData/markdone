@@ -1,33 +1,29 @@
 import SwiftUI
 
-/// A reference sheet listing every keyboard shortcut.
+/// A short reference sheet: how Markdown editing works, plus the app-level
+/// keyboard shortcuts.
 struct HelpSheet: View {
     @EnvironmentObject var store: WeekStore
 
+    private let basics: [(String, String)] = [
+        ("Checkboxes", "Type \"[] task\" or \"- [ ] task\" to make a checkbox. Click the box to mark it done; the text dims and strikes through."),
+        ("Live Markdown", "Headings (#), bold (**), italic (*), lists (-), and links render in place. The line your cursor is on always shows its raw Markdown."),
+        ("Day blocks", "Each day is its own Markdown block. Write tasks and notes freely; switch days with the tabs above."),
+        ("Templates", "The weekly template seeds each new week. Open it from the bottom bar to set recurring tasks per day.")
+    ]
+
     private let shortcuts: [(String, String)] = [
-        ("↑ / ↓", "Move within a column; Up from the top jumps to the day tabs"),
-        ("← / →", "Move between the This Week and Tasks columns"),
-        ("On the habits row: ← / →", "Move between habit checkboxes"),
-        ("On day tabs: ← / →", "Switch the active day (Down returns to the column)"),
-        ("Tab / ⇧Tab", "Cycle region: Day tabs → This Week → Tasks"),
-        ("⇧← / ⇧→", "Move the selected task across days (This Week ↔ Mon…Sun)"),
-        ("⇧↑ / ⇧↓", "Reorder the selected task within its list"),
-        ("Space", "Toggle the selected task or habit complete"),
-        ("Return or R", "Rename the selected task (double-click also works)"),
-        ("While editing: ↑ / ↓", "Accept the text and move to the task above/below"),
-        ("W", "New This Week task"),
-        ("N", "New task in the selected day"),
-        ("Delete", "Delete the selected task (clears a Big Three slot)"),
+        ("⌘1 … ⌘7", "Jump to Monday … Sunday"),
+        ("⌘⌥← / ⌘⌥→", "Previous / next day"),
         ("⌘N", "New week"),
-        ("T", "Open the weekly template"),
-        ("?", "Show this shortcuts list"),
-        ("Esc", "Cancel a rename, or close the popover")
+        ("⌘W", "Close the popover"),
+        ("Esc", "Close an open panel (template, settings, help)")
     ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("Keyboard Shortcuts")
+                Text("Help")
                     .font(.system(size: 22, weight: .bold))
                     .foregroundColor(Style.primaryText)
                 Spacer()
@@ -39,30 +35,15 @@ struct HelpSheet: View {
             .padding(.bottom, 16)
 
             ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(Array(shortcuts.enumerated()), id: \.offset) { _, pair in
-                        HStack(alignment: .top, spacing: 16) {
-                            Text(pair.0)
-                                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                .foregroundColor(Style.primaryText)
-                                .frame(width: 110, alignment: .leading)
-                            Text(pair.1)
-                                .font(.system(size: 13))
-                                .foregroundColor(Style.secondaryText)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .padding(.vertical, 9)
-                        .overlay(
-                            Rectangle().fill(Style.divider).frame(height: 1),
-                            alignment: .bottom
-                        )
-                    }
+                VStack(alignment: .leading, spacing: 20) {
+                    section("Basics", rows: basics, labelWidth: 110)
+                    section("Keyboard Shortcuts", rows: shortcuts, labelWidth: 110)
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 20)
             }
         }
-        .frame(width: 520, height: 540)
+        .frame(width: 540, height: 560)
         .background(
             ZStack {
                 VisualEffectView(material: .hudWindow)
@@ -70,5 +51,31 @@ struct HelpSheet: View {
             }
         )
         .preferredColorScheme(.dark)
+    }
+
+    private func section(_ title: String, rows: [(String, String)], labelWidth: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title)
+                .font(.system(size: 15, weight: .bold))
+                .foregroundColor(Style.primaryText)
+                .padding(.bottom, 8)
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, pair in
+                HStack(alignment: .top, spacing: 16) {
+                    Text(pair.0)
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundColor(Style.primaryText)
+                        .frame(width: labelWidth, alignment: .leading)
+                    Text(pair.1)
+                        .font(.system(size: 13))
+                        .foregroundColor(Style.secondaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.vertical, 9)
+                .overlay(
+                    Rectangle().fill(Style.divider).frame(height: 1),
+                    alignment: .bottom
+                )
+            }
+        }
     }
 }

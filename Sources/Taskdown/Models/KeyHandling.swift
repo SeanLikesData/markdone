@@ -1,56 +1,23 @@
 import AppKit
 
 /// Interprets raw key events into store actions. Installed as a local key
-/// monitor by the AppDelegate while the popover is open. Returns the event
-/// unchanged when it should fall through to a text field or button, or `nil`
-/// to consume it.
+/// monitor by the AppDelegate while the popover is open. Most keys belong to the
+/// focused Markdown text field, so this returns the event unchanged unless it is
+/// an app-level shortcut, in which case it acts and returns `nil` to consume it.
 extension WeekStore {
     private enum Key {
-        static let returnKey: UInt16 = 36
-        static let keypadEnter: UInt16 = 76
-        static let tab: UInt16 = 48
-        static let space: UInt16 = 49
-        static let delete: UInt16 = 51
-        static let forwardDelete: UInt16 = 117
         static let escape: UInt16 = 53
         static let left: UInt16 = 123
         static let right: UInt16 = 124
-        static let down: UInt16 = 125
-        static let up: UInt16 = 126
     }
 
     func handleKeyDown(_ event: NSEvent) -> NSEvent? {
         let code = event.keyCode
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        let shift = flags.contains(.shift)
         let command = flags.contains(.command)
+        let option = flags.contains(.option)
 
-        // While editing a title: Enter commits; Up/Down commit and then move to
-        // the adjacent task; Escape cancels. Every other key (including Left and
-        // Right, which move the text cursor) belongs to the text field.
-        if editingID != nil {
-            switch code {
-            case Key.returnKey, Key.keypadEnter:
-                commitEditing()
-                return nil
-            case Key.up:
-                commitEditing()
-                navigateVertical(up: true)
-                return nil
-            case Key.down:
-                commitEditing()
-                navigateVertical(up: false)
-                return nil
-            case Key.escape:
-                cancelEditing()
-                return nil
-            default:
-                return event
-            }
-        }
-
-        // A sheet (weeks, template, settings, help) owns its own keys, except
-        // Escape, which closes it.
+        // A sheet owns its own keys, except Escape, which closes it.
         if activeSheet != nil {
             if code == Key.escape {
                 activeSheet = nil
@@ -59,66 +26,36 @@ extension WeekStore {
             return event
         }
 
-        // Command combinations.
-        if command {
-            switch event.charactersIgnoringModifiers?.lowercased() {
-            case "n":
-                addNewWeek()
+        guard command else { return event }
+
+        // Day navigation: Cmd+Option+Left/Right steps days; Cmd+1...7 jumps to a
+        // specific weekday. These use modifiers the text field does not, so
+        // text editing keeps Cmd+arrows for line movement.
+        if option {
+            switch code {
+            case Key.left:
+                switchDay(forward: false)
+                return nil
+            case Key.right:
+                switchDay(forward: true)
                 return nil
             default:
-                return event
+                break
             }
         }
 
-        // Plain navigation and actions.
-        switch code {
-        case Key.up:
-            if shift { reorderSelected(up: true) } else { navigateVertical(up: true) }
-            return nil
-        case Key.down:
-            if shift { reorderSelected(up: false) } else { navigateVertical(up: false) }
-            return nil
-        case Key.left:
-            if shift { moveSelectedAlongChain(forward: false) } else { navigateHorizontal(right: false) }
-            return nil
-        case Key.right:
-            if shift { moveSelectedAlongChain(forward: true) } else { navigateHorizontal(right: true) }
-            return nil
-        case Key.tab:
-            cycleRegion(forward: !shift)
-            return nil
-        case Key.space:
-            if let id = selectedID { toggleDone(id) }
-            return nil
-        case Key.returnKey, Key.keypadEnter:
-            beginEditingSelected()
-            return nil
-        case Key.delete, Key.forwardDelete:
-            deleteSelected()
-            return nil
-        case Key.escape:
+        switch event.charactersIgnoringModifiers?.lowercased() {
+        case "w":
             onRequestClose?()
             return nil
-        default:
-            break
-        }
-
-        // Letter commands.
-        switch event.charactersIgnoringModifiers {
-        case "r":
-            beginEditingSelected()
-            return nil
-        case "w":
-            addWeekTask()
-            return nil
         case "n":
-            addDayTask()
+            addNewWeek()
             return nil
-        case "t":
-            activeSheet = .template
-            return nil
-        case "?":
-            activeSheet = .help
+        case "1", "2", "3", "4", "5", "6", "7":
+            if let n = Int(event.charactersIgnoringModifiers ?? ""),
+               let weekday = Weekday(rawValue: n - 1) {
+                selectTab(weekday)
+            }
             return nil
         default:
             return event
