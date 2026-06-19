@@ -37,7 +37,7 @@ final class WeekStore: ObservableObject {
     @Published var activeSheet: ActiveSheet?
     @Published private(set) var saveState: SaveState = .saved
 
-    /// Closure the AppDelegate sets so Cmd+W can close the popover.
+    /// Closure the AppDelegate sets so Escape can close the popover.
     var onRequestClose: (() -> Void)?
     /// Closure the AppDelegate sets so the bottom bar can pop out into a
     /// resizable window.

@@ -1,9 +1,10 @@
 import AppKit
 
-/// Interprets raw key events into store actions. Installed as a local key
-/// monitor by the AppDelegate while the popover is open. Most keys belong to the
-/// focused Markdown text field, so this returns the event unchanged unless it is
-/// an app-level shortcut, in which case it acts and returns `nil` to consume it.
+/// Interprets raw key events into store actions. The AppDelegate's session-long
+/// key monitor calls this for events aimed at the popover or pop-out window.
+/// Most keys belong to the focused Markdown text field, so this returns the
+/// event unchanged unless it is an app-level shortcut, in which case it acts and
+/// returns `nil` to consume it.
 extension WeekStore {
     private enum Key {
         static let escape: UInt16 = 53
