@@ -254,17 +254,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         removeKeyMonitor()
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
             guard let self else { return event }
-            // Cmd+W closes whichever surface is focused, with the popover's
-            // proper cleanup. When a sheet is open it falls through to the store.
-            if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
-               event.charactersIgnoringModifiers?.lowercased() == "w",
-               self.store.activeSheet == nil {
-                if self.window?.isKeyWindow == true {
-                    self.window?.performClose(nil)
-                    return nil
-                }
-                if self.panel?.isVisible == true {
-                    self.closePopover()
+
+            // When no Taskdown sheet is open, only handle shortcuts for events
+            // aimed at our own popover or pop-out window. This leaves other
+            // AppKit windows — notably the export save panel — with their
+            // standard Escape and Cmd+W. When a sheet is open its events target
+            // the sheet window, so we skip this gate and let the store handle
+            // Escape to close the sheet.
+            if self.store.activeSheet == nil {
+                let target = event.window
+                guard target === self.panel || target === self.window else { return event }
+
+                // Cmd+W closes the focused surface, with the popover's cleanup.
+                if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+                   event.charactersIgnoringModifiers?.lowercased() == "w" {
+                    if target === self.window {
+                        self.window?.performClose(nil)
+                    } else {
+                        self.closePopover()
+                    }
                     return nil
                 }
             }
