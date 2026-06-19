@@ -38,6 +38,9 @@ final class WeekStore: ObservableObject {
 
     /// Closure the AppDelegate sets so Cmd+W can close the popover.
     var onRequestClose: (() -> Void)?
+    /// Closure the AppDelegate sets so the bottom bar can pop out into a
+    /// resizable window.
+    var onOpenInWindow: (() -> Void)?
 
     private let logger = Logger(subsystem: "com.taskdown.app", category: "store")
     private var saveWorkItem: DispatchWorkItem?

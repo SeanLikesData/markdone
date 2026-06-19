@@ -28,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let logger = Logger(subsystem: "com.taskdown.app", category: "popover")
 
     private var panel: TaskdownPanel?
+    private var window: NSWindow?
     private var globalMonitor: Any?
     private var keyMonitor: Any?
     private var defaultsObserver: NSObjectProtocol?
@@ -45,6 +46,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         store.onRequestClose = { [weak self] in
             self?.closePopover()
+        }
+        store.onOpenInWindow = { [weak self] in
+            self?.openInWindow()
         }
 
         installMainMenu()
@@ -84,6 +88,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appMenuItem.submenu = appMenu
         mainMenu.addItem(appMenuItem)
 
+        let fileMenuItem = NSMenuItem()
+        let fileMenu = NSMenu(title: "File")
+        fileMenu.addItem(
+            withTitle: "New Week",
+            action: #selector(newWeekMenu),
+            keyEquivalent: "n"
+        )
+        fileMenu.addItem(NSMenuItem.separator())
+        fileMenu.addItem(
+            withTitle: "Close",
+            action: #selector(NSWindow.performClose(_:)),
+            keyEquivalent: "w"
+        )
+        fileMenuItem.submenu = fileMenu
+        mainMenu.addItem(fileMenuItem)
+
         let editMenuItem = NSMenuItem()
         let editMenu = NSMenu(title: "Edit")
         editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
@@ -96,7 +116,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         editMenuItem.submenu = editMenu
         mainMenu.addItem(editMenuItem)
 
+        let windowMenuItem = NSMenuItem()
+        let windowMenu = NSMenu(title: "Window")
+        windowMenu.addItem(
+            withTitle: "Minimize",
+            action: #selector(NSWindow.performMiniaturize(_:)),
+            keyEquivalent: "m"
+        )
+        windowMenuItem.submenu = windowMenu
+        mainMenu.addItem(windowMenuItem)
+
         NSApp.mainMenu = mainMenu
+        NSApp.windowsMenu = windowMenu
+    }
+
+    @objc private func newWeekMenu() {
+        store.addNewWeek()
+    }
+
+    /// Pop the content out into a normal resizable window, sharing the same
+    /// store as the popover so both always show the same data.
+    private func openInWindow() {
+        closePopover()
+        if window == nil {
+            let win = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 980, height: 720),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+                backing: .buffered,
+                defer: false
+            )
+            win.title = "Taskdown"
+            win.titleVisibility = .hidden
+            win.titlebarAppearsTransparent = true
+            win.isReleasedWhenClosed = false
+            win.appearance = NSAppearance(named: .darkAqua)
+            win.backgroundColor = .clear
+            win.isOpaque = false
+            win.minSize = NSSize(width: 640, height: 480)
+            win.contentViewController = NSHostingController(
+                rootView: ContentView(inWindow: true)
+                    .environmentObject(store)
+            )
+            win.center()
+            window = win
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        window?.makeKeyAndOrderFront(nil)
     }
 
     private func createPanel() {

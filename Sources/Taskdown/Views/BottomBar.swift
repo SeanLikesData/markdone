@@ -19,6 +19,10 @@ struct BottomBar: View {
                 .padding(.vertical, 7)
                 .background(Capsule().fill(Style.chipFill))
 
+            iconButton(systemName: "macwindow", title: nil) {
+                store.onOpenInWindow?()
+            }
+
             iconButton(systemName: "square.grid.2x2", title: "Template") {
                 store.activeSheet = .template
             }

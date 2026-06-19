@@ -5,9 +5,18 @@ import SwiftUI
 /// present over it.
 struct ContentView: View {
     @EnvironmentObject var store: WeekStore
+    /// In the pop-out window the content fills the whole window with square
+    /// corners; in the popover it is a rounded, bordered card.
+    var inWindow: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
+            if inWindow {
+                // Clearance for the window's traffic-light buttons, which float
+                // over the full-size content.
+                Color.clear.frame(height: 22)
+            }
+
             DayTabsView()
 
             Rectangle()
@@ -39,10 +48,10 @@ struct ContentView: View {
                 Color.black.opacity(0.30)
             }
         )
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: inWindow ? 0 : 16, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+            RoundedRectangle(cornerRadius: inWindow ? 0 : 16, style: .continuous)
+                .strokeBorder(Color.white.opacity(inWindow ? 0 : 0.08), lineWidth: 1)
         )
         .preferredColorScheme(.dark)
         .sheet(item: $store.activeSheet) { sheet in
