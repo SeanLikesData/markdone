@@ -5,6 +5,7 @@ import AppKit
 /// and settings on the right.
 struct BottomBar: View {
     @EnvironmentObject var store: WeekStore
+    @State private var confirmingQuit = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -37,9 +38,15 @@ struct BottomBar: View {
             }
 
             iconButton(systemName: "power", title: nil) {
-                NSApp.terminate(nil)
+                confirmingQuit = true
             }
-            .help("Quit Taskdown (⌘Q)")
+            .help("Quit Taskdown")
+            .confirmationDialog("Quit Taskdown?", isPresented: $confirmingQuit) {
+                Button("Quit", role: .destructive) { NSApp.terminate(nil) }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Your tasks are saved automatically.")
+            }
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)

@@ -107,25 +107,57 @@ final class MarkdownLayoutManager: NSLayoutManager {
 }
 
 /// An `NSTextView` that toggles a Markdown checkbox when its rendered box is
-/// clicked, without moving the insertion point or entering edit mode.
+/// clicked (without moving the insertion point), and shows a pointing-hand
+/// cursor over checkboxes so they read as clickable.
 final class MarkdownTextView: NSTextView {
+    private static let cursorTrackingKey = "taskdownCheckboxCursor"
+
     override func mouseDown(with event: NSEvent) {
-        if event.clickCount == 1, toggleCheckboxIfClicked(event) {
-            return
+        if event.clickCount == 1 {
+            let viewPoint = convert(event.locationInWindow, from: nil)
+            if let marker = checkbox(at: viewPoint) {
+                toggle(marker)
+                return
+            }
         }
         super.mouseDown(with: event)
     }
 
-    /// Returns true if the click landed on a checkbox and was handled.
-    private func toggleCheckboxIfClicked(_ event: NSEvent) -> Bool {
+    // A `.cursorUpdate` tracking area is the reliable way to set a custom cursor
+    // in an NSTextView; `resetCursorRects` is overridden by the text view's own
+    // cursor handling on mouse-move.
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas where area.userInfo?[Self.cursorTrackingKey] != nil {
+            removeTrackingArea(area)
+        }
+        addTrackingArea(NSTrackingArea(
+            rect: .zero,
+            options: [.cursorUpdate, .activeInKeyWindow, .inVisibleRect],
+            owner: self,
+            userInfo: [Self.cursorTrackingKey: true]
+        ))
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        let viewPoint = convert(event.locationInWindow, from: nil)
+        if checkbox(at: viewPoint) != nil {
+            NSCursor.pointingHand.set()
+        } else {
+            NSCursor.iBeam.set()
+        }
+    }
+
+    /// The rendered checkbox under a point in view coordinates, if any. Returns
+    /// nil over plain text or over a raw (active) task line.
+    private func checkbox(at viewPoint: NSPoint) -> MarkdownTasks.Marker? {
         guard let layoutManager, let textContainer, let textStorage,
               layoutManager.numberOfGlyphs > 0
-        else { return false }
+        else { return nil }
 
         let text = string as NSString
-        guard text.length > 0 else { return false }
+        guard text.length > 0 else { return nil }
 
-        let viewPoint = convert(event.locationInWindow, from: nil)
         let containerPoint = NSPoint(
             x: viewPoint.x - textContainerOrigin.x,
             y: viewPoint.y - textContainerOrigin.y
@@ -137,60 +169,34 @@ final class MarkdownTextView: NSTextView {
             in: textContainer,
             fractionOfDistanceThroughGlyph: &fraction
         )
-        guard glyphIndex < layoutManager.numberOfGlyphs else { return false }
+        guard glyphIndex < layoutManager.numberOfGlyphs else { return nil }
         let charIndex = layoutManager.characterIndexForGlyph(at: glyphIndex)
-        guard charIndex < text.length else { return false }
+        guard charIndex < text.length else { return nil }
 
         let lineRange = text.lineRange(for: NSRange(location: charIndex, length: 0))
-        guard let marker = MarkdownTasks.marker(in: text, lineRange: lineRange) else {
-            return false
+        guard let marker = MarkdownTasks.marker(in: text, lineRange: lineRange) else { return nil }
+
+        // Only when the box is actually drawn (an inactive, rendered line), so
+        // the raw line being edited keeps the normal text cursor and click.
+        var rendered = false
+        textStorage.enumerateAttribute(.taskdownListMarker, in: marker.hitRange, options: []) { value, _, stop in
+            if value != nil { rendered = true; stop.pointee = true }
         }
+        guard rendered else { return nil }
 
-        // Only toggle when the click is actually within the rendered marker box,
-        // not just anywhere on the task line.
-        let markerGlyphRange = layoutManager.glyphRange(
-            forCharacterRange: marker.hitRange,
-            actualCharacterRange: nil
-        )
-        let markerRect = layoutManager.boundingRect(forGlyphRange: markerGlyphRange, in: textContainer)
-        guard markerRect.contains(containerPoint) else { return false }
+        let glyphRange = layoutManager.glyphRange(forCharacterRange: marker.hitRange, actualCharacterRange: nil)
+        let rect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
+        return rect.contains(containerPoint) ? marker : nil
+    }
 
+    private func toggle(_ marker: MarkdownTasks.Marker) {
+        guard let textStorage else { return }
         let replacement = marker.toggledReplacement
-        // If the change is vetoed, fall through to normal click handling so the
-        // user can still place the cursor.
-        guard shouldChangeText(in: marker.bracketRange, replacementString: replacement) else {
-            return false
-        }
+        guard shouldChangeText(in: marker.bracketRange, replacementString: replacement) else { return }
         textStorage.beginEditing()
         textStorage.replaceCharacters(in: marker.bracketRange, with: replacement)
         textStorage.endEditing()
         didChangeText()
-        return true
-    }
-
-    // Show a pointing-hand cursor over rendered checkboxes so they read as
-    // clickable, instead of the text I-beam.
-    override func resetCursorRects() {
-        super.resetCursorRects()
-        guard let layoutManager, let textContainer, let textStorage else { return }
-        let text = string as NSString
-        let inset = textContainerOrigin
-        textStorage.enumerateAttribute(
-            .taskdownListMarker,
-            in: NSRange(location: 0, length: textStorage.length),
-            options: []
-        ) { value, range, _ in
-            guard let symbol = value as? String,
-                  symbol == ListMarker.checked || symbol == ListMarker.unchecked
-            else { return }
-            let lineRange = text.lineRange(for: range)
-            guard let marker = MarkdownTasks.marker(in: text, lineRange: lineRange) else { return }
-            let glyphRange = layoutManager.glyphRange(forCharacterRange: marker.hitRange, actualCharacterRange: nil)
-            var rect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
-            rect.origin.x += inset.x
-            rect.origin.y += inset.y
-            self.addCursorRect(rect, cursor: .pointingHand)
-        }
     }
 }
 
@@ -368,9 +374,6 @@ struct MarkdownTextEditor: NSViewRepresentable {
                 .font: font,
                 .foregroundColor: NSColor.textColor
             ]
-            // Checkbox positions changed, so rebuild the pointing-hand cursor
-            // rects.
-            textView.window?.invalidateCursorRects(for: textView)
             isUpdatingAppearance = false
         }
     }
