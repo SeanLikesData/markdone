@@ -1,8 +1,13 @@
-# Markdone
+<p align="center">
+  <img src="docs/logo.png" width="132" alt="Markdone logo — a friendly checkbox with a green check smile">
+</p>
 
-**Markdone** is a local macOS menu bar app for planning your week in Markdown.
-Write your tasks as plain Markdown — and any `[ ]` checkbox becomes a real,
-clickable box. It's "markdown," but you also *mark things done*.
+<h1 align="center">Markdone</h1>
+
+<p align="center">
+  A local macOS menu bar app for planning your week in Markdown.<br>
+  Write tasks as plain Markdown — and any <code>[&nbsp;]</code> becomes a box you click to <em>mark&nbsp;done</em>.
+</p>
 
 <p align="center">
   <img src="docs/screenshots/popover.png" width="640" alt="Markdone popover showing day tabs, Big Three and This Week on the left, and Friday's tasks on the right">
