@@ -1,6 +1,6 @@
-# Taskdown
+# Markdone
 
-Taskdown is a local macOS menu bar application for planning a week of tasks in
+Markdone is a local macOS menu bar application for planning a week of tasks in
 Markdown. Every region — the **Big Three** priorities, the undated **This Week**
 list, and each weekday — is a Markdown text field that live-renders: Markdown
 syntax is hidden on the lines your cursor is not on, headings are colored, and
@@ -75,7 +75,7 @@ From this repository root:
 
 ```sh
 ./build.sh
-open build/Taskdown.app
+open build/Markdone.app
 ```
 
 The build script compiles the Swift sources directly with `swiftc` and assembles
@@ -89,14 +89,14 @@ To build, install to `/Applications`, and relaunch in one step:
 ./build.sh --install
 ```
 
-To quit, press **Cmd-Q**, or use Quit Taskdown in Settings.
+To quit, press **Cmd-Q**, or use Quit Markdone in Settings.
 
 ## Data storage
 
-Taskdown stores everything locally:
+Markdone stores everything locally:
 
 ```text
-~/Library/Application Support/Taskdown/data.json
+~/Library/Application Support/Markdone/data.json
 ```
 
 Each region is stored as a Markdown string. **Export all weeks to Markdown…** in

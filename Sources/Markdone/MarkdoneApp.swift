@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 import os
 
-// Taskdown is a menu bar accessory. AppKit owns the status item and the custom
+// Markdone is a menu bar accessory. AppKit owns the status item and the custom
 // borderless panel; the content is SwiftUI. A borderless NSPanel is used
 // instead of NSPopover because NSPopover can visibly re-anchor itself after its
 // first SwiftUI layout pass.
@@ -25,9 +25,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let panelSize = NSSize(width: 780, height: 660)
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let store = WeekStore()
-    private let logger = Logger(subsystem: "com.taskdown.app", category: "popover")
+    private let logger = Logger(subsystem: "com.markdone.app", category: "popover")
 
-    private var panel: TaskdownPanel?
+    private var panel: MarkdonePanel?
     private var window: NSWindow?
     private var globalMonitor: Any?
     private var keyMonitor: Any?
@@ -39,7 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         UserDefaults.standard.register(defaults: [SettingsKey.pinned: true])
 
         if let button = statusItem.button {
-            button.image = StatusIcon.taskdown
+            button.image = StatusIcon.markdone
             button.action = #selector(togglePopover)
             button.target = self
         }
@@ -85,7 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let appMenuItem = NSMenuItem()
         let appMenu = NSMenu()
         appMenu.addItem(
-            withTitle: "Quit Taskdown",
+            withTitle: "Quit Markdone",
             action: #selector(NSApplication.terminate(_:)),
             keyEquivalent: "q"
         )
@@ -150,7 +150,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 backing: .buffered,
                 defer: false
             )
-            win.title = "Taskdown"
+            win.title = "Markdone"
             win.titleVisibility = .hidden
             win.titlebarAppearsTransparent = true
             win.isReleasedWhenClosed = false
@@ -177,7 +177,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func createPanel() {
-        let panel = TaskdownPanel(
+        let panel = MarkdonePanel(
             contentRect: NSRect(origin: .zero, size: panelSize),
             styleMask: [.borderless],
             backing: .buffered,
@@ -255,7 +255,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
             guard let self else { return event }
 
-            // When no Taskdown sheet is open, only handle shortcuts for events
+            // When no Markdone sheet is open, only handle shortcuts for events
             // aimed at our own popover or pop-out window. This leaves other
             // AppKit windows — notably the export save panel — with their
             // standard Escape and Cmd+W. When a sheet is open its events target
@@ -306,7 +306,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 }
 
-final class TaskdownPanel: NSPanel {
+final class MarkdonePanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
 }

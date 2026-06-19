@@ -5,14 +5,14 @@ import PackageDescription
 // (swiftc directly), because Swift Package Manager's manifest step does not
 // link on a machine that has only the Xcode Command Line Tools.
 let package = Package(
-    name: "Taskdown",
+    name: "Markdone",
     platforms: [
         .macOS(.v14)
     ],
     targets: [
         .executableTarget(
-            name: "Taskdown",
-            path: "Sources/Taskdown"
+            name: "Markdone",
+            path: "Sources/Markdone"
         )
     ]
 )

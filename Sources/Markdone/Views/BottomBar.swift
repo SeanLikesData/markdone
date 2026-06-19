@@ -40,8 +40,8 @@ struct BottomBar: View {
             iconButton(systemName: "power", title: nil) {
                 confirmingQuit = true
             }
-            .help("Quit Taskdown")
-            .confirmationDialog("Quit Taskdown?", isPresented: $confirmingQuit) {
+            .help("Quit Markdone")
+            .confirmationDialog("Quit Markdone?", isPresented: $confirmingQuit) {
                 Button("Quit", role: .destructive) { NSApp.terminate(nil) }
                 Button("Cancel", role: .cancel) {}
             } message: {

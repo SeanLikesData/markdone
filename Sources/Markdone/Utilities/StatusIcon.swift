@@ -1,12 +1,12 @@
 import AppKit
 
-/// The menu bar icon for Taskdown: the Markdown checkbox syntax itself — a pair
+/// The menu bar icon for Markdone: the Markdown checkbox syntax itself — a pair
 /// of square brackets with a checkmark bursting slightly out of them, "[✓]".
 /// It is the literal thing the app is about (clickable Markdown checkboxes).
 /// Drawn as a monochrome template image so macOS tints it for light and dark
 /// menu bars.
 enum StatusIcon {
-    static var taskdown: NSImage {
+    static var markdone: NSImage {
         let size = NSSize(width: 18, height: 18)
         let image = NSImage(size: size)
 
@@ -48,7 +48,7 @@ enum StatusIcon {
         check.stroke()
 
         image.isTemplate = true
-        image.accessibilityDescription = "Taskdown"
+        image.accessibilityDescription = "Markdone"
         return image
     }
 }

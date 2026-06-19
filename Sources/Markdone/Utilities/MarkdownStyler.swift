@@ -1,7 +1,7 @@
 import AppKit
 
 extension NSAttributedString.Key {
-    static let taskdownListMarker = NSAttributedString.Key("TaskdownListMarker")
+    static let markdoneListMarker = NSAttributedString.Key("MarkdoneListMarker")
 }
 
 /// Applies non-destructive display attributes to plain Markdown text. Only
@@ -9,7 +9,7 @@ extension NSAttributedString.Key {
 /// Lines the cursor is on always show their raw source; every other line is
 /// styled (syntax hidden, headings colored, checkboxes drawn).
 ///
-/// Adapted from Notebloat's MarkdownStyler. Taskdown adds: the task checkbox
+/// Adapted from Notebloat's MarkdownStyler. Markdone adds: the task checkbox
 /// pattern is shared with `MarkdownTasks` (so counting and click-to-toggle
 /// agree with what is drawn), and a completed task's text is dimmed and struck
 /// through.
@@ -282,7 +282,7 @@ enum MarkdownStyler {
                 .font: baseFont,
                 .foregroundColor: NSColor.clear,
                 .kern: max(2, slot - charWidth),
-                .taskdownListMarker: checked ? ListMarker.checked : ListMarker.unchecked
+                .markdoneListMarker: checked ? ListMarker.checked : ListMarker.unchecked
             ],
             range: symbolAbs
         )
@@ -310,7 +310,7 @@ enum MarkdownStyler {
         // custom layout manager draws it at the correct glyph position.
         let markerRange = absolute(symbolRange, within: lineRange)
         textStorage.addAttribute(
-            .taskdownListMarker,
+            .markdoneListMarker,
             value: symbol,
             range: markerRange
         )

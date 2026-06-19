@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build Taskdown and assemble a proper .app bundle.
+# Build Markdone and assemble a proper .app bundle.
 #
 # This compiles the Swift sources directly with `swiftc` rather than using
 # Swift Package Manager. On a machine with only the Xcode Command Line Tools
@@ -9,13 +9,13 @@
 # A menu bar app needs an Info.plist with LSUIElement = true so it runs as a
 # background accessory (no Dock icon), which this script writes.
 #
-# Pass --install to also replace /Applications/Taskdown.app and relaunch it.
+# Pass --install to also replace /Applications/Markdone.app and relaunch it.
 set -euo pipefail
 
 cd "$(dirname "$0")"
 
-APP_NAME="Taskdown"
-BUNDLE_ID="com.taskdown.app"
+APP_NAME="Markdone"
+BUNDLE_ID="com.markdone.app"
 VERSION="1.0"
 BUILD_VERSION="1"
 
@@ -40,7 +40,7 @@ rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR"
 mkdir -p "$APP_DIR/Contents/Resources"
 
-SOURCES=$(find Sources/Taskdown -name '*.swift')
+SOURCES=$(find Sources/Markdone -name '*.swift')
 
 echo "==> Compiling with swiftc"
 # shellcheck disable=SC2086

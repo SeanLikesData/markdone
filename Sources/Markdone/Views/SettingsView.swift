@@ -62,7 +62,7 @@ struct SettingsView: View {
 
                 Spacer()
 
-                Button("Quit Taskdown") { NSApp.terminate(nil) }
+                Button("Quit Markdone") { NSApp.terminate(nil) }
                     .buttonStyle(SheetButtonStyle())
             }
             .padding(24)
@@ -79,7 +79,7 @@ struct SettingsView: View {
 
     private func revealData() {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let dir = base.appendingPathComponent("Taskdown", isDirectory: true)
+        let dir = base.appendingPathComponent("Markdone", isDirectory: true)
         NSWorkspace.shared.activateFileViewerSelecting([dir.appendingPathComponent("data.json")])
     }
 }

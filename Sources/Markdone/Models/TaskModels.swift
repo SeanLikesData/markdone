@@ -83,7 +83,7 @@ struct Template: Codable, Hashable {
 }
 
 /// Top-level persisted document: every saved week plus the template.
-struct TaskdownData: Codable {
+struct MarkdoneData: Codable {
     var weeks: [Week] = []
     var template: Template = Template()
 }
@@ -132,7 +132,7 @@ extension Template {
     }
 }
 
-extension TaskdownData {
+extension MarkdoneData {
     enum CodingKeys: String, CodingKey { case weeks, template }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)

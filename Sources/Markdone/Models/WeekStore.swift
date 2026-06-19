@@ -30,7 +30,7 @@ enum SaveState {
 /// and saves on change.
 @MainActor
 final class WeekStore: ObservableObject {
-    @Published private(set) var data = TaskdownData()
+    @Published private(set) var data = MarkdoneData()
     @Published var selectedWeekID: UUID = UUID()
     @Published var activeDay: Weekday = .monday
 
@@ -43,25 +43,51 @@ final class WeekStore: ObservableObject {
     /// resizable window.
     var onOpenInWindow: (() -> Void)?
 
-    private let logger = Logger(subsystem: "com.taskdown.app", category: "store")
+    private let logger = Logger(subsystem: "com.markdone.app", category: "store")
     private var saveWorkItem: DispatchWorkItem?
 
     // MARK: - Persistence paths
 
     private var supportDirectory: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return base.appendingPathComponent("Taskdown", isDirectory: true)
+        return base.appendingPathComponent("Markdone", isDirectory: true)
     }
 
     private var dataURL: URL {
         supportDirectory.appendingPathComponent("data.json")
     }
 
+    /// The data file under the app's former name ("Taskdown"), copied to the
+    /// current location on first launch after the rename.
+    private var legacyDataURL: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return base.appendingPathComponent("Taskdown", isDirectory: true)
+            .appendingPathComponent("data.json")
+    }
+
     // MARK: - Lifecycle
 
     init() {
+        migrateLegacyDataIfNeeded()
         load()
         ensureSomeWeek()
+    }
+
+    /// One-time move from the old "Taskdown" support directory. Copies (rather
+    /// than moves) so the original stays as a backup.
+    private func migrateLegacyDataIfNeeded() {
+        let newURL = dataURL
+        let oldURL = legacyDataURL
+        let fileManager = FileManager.default
+        guard !fileManager.fileExists(atPath: newURL.path),
+              fileManager.fileExists(atPath: oldURL.path) else { return }
+        do {
+            try fileManager.createDirectory(at: supportDirectory, withIntermediateDirectories: true)
+            try fileManager.copyItem(at: oldURL, to: newURL)
+            logger.info("Migrated data from the former Taskdown location")
+        } catch {
+            logger.error("Failed to migrate legacy data: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     private func load() {
@@ -69,7 +95,7 @@ final class WeekStore: ObservableObject {
         guard FileManager.default.fileExists(atPath: url.path) else { return }
         do {
             let bytes = try Data(contentsOf: url)
-            data = try JSONDecoder().decode(TaskdownData.self, from: bytes)
+            data = try JSONDecoder().decode(MarkdoneData.self, from: bytes)
         } catch {
             logger.error("Failed to load data: \(error.localizedDescription, privacy: .public)")
             // Preserve the unreadable file so the fresh week we are about to
@@ -309,7 +335,7 @@ final class WeekStore: ObservableObject {
         let markdown = exportMarkdown()
         activeSheet = nil
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = "taskdown-export.md"
+        panel.nameFieldStringValue = "markdone-export.md"
         panel.allowedContentTypes = [.init(filenameExtension: "md") ?? .plainText]
         panel.canCreateDirectories = true
         panel.title = "Export Tasks to Markdown"

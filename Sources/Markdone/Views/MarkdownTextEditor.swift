@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-/// The `.taskdownListMarker` attribute values the styler emits. Checkboxes are
+/// The `.markdoneListMarker` attribute values the styler emits. Checkboxes are
 /// drawn as SF Symbols; bullets are drawn as text.
 enum ListMarker {
     static let checked = "☑"
@@ -9,7 +9,7 @@ enum ListMarker {
 }
 
 /// Draws the replacement glyphs (checkbox boxes and bullets) that the
-/// `MarkdownStyler` marks with the `.taskdownListMarker` attribute, on top of
+/// `MarkdownStyler` marks with the `.markdoneListMarker` attribute, on top of
 /// the (invisible) source characters. Checkboxes render as crisp, slightly
 /// oversized SF Symbols so they read as real, clickable controls.
 final class MarkdownLayoutManager: NSLayoutManager {
@@ -26,7 +26,7 @@ final class MarkdownLayoutManager: NSLayoutManager {
             actualGlyphRange: nil
         )
         textStorage.enumerateAttribute(
-            .taskdownListMarker,
+            .markdoneListMarker,
             in: characterRange,
             options: []
         ) { value, range, _ in
@@ -110,7 +110,7 @@ final class MarkdownLayoutManager: NSLayoutManager {
 /// clicked (without moving the insertion point), and shows a pointing-hand
 /// cursor over checkboxes so they read as clickable.
 final class MarkdownTextView: NSTextView {
-    private static let cursorTrackingKey = "taskdownCheckboxCursor"
+    private static let cursorTrackingKey = "markdoneCheckboxCursor"
 
     override func mouseDown(with event: NSEvent) {
         if event.clickCount == 1 {
@@ -179,7 +179,7 @@ final class MarkdownTextView: NSTextView {
         // Only when the box is actually drawn (an inactive, rendered line), so
         // the raw line being edited keeps the normal text cursor and click.
         var rendered = false
-        textStorage.enumerateAttribute(.taskdownListMarker, in: marker.hitRange, options: []) { value, _, stop in
+        textStorage.enumerateAttribute(.markdoneListMarker, in: marker.hitRange, options: []) { value, _, stop in
             if value != nil { rendered = true; stop.pointee = true }
         }
         guard rendered else { return nil }
