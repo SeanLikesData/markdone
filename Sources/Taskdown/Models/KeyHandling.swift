@@ -26,6 +26,15 @@ extension WeekStore {
             return event
         }
 
+        // With no sheet open, Escape closes the popover (standard for a HUD
+        // panel). Cmd+W is handled one level up, in the AppDelegate's key
+        // monitor, so it can close whichever surface — popover or window — is
+        // focused.
+        if code == Key.escape {
+            onRequestClose?()
+            return nil
+        }
+
         guard command else { return event }
 
         // Day navigation: Cmd+Option+Left/Right steps days; Cmd+1...7 jumps to a
@@ -45,9 +54,6 @@ extension WeekStore {
         }
 
         switch event.charactersIgnoringModifiers?.lowercased() {
-        case "w":
-            onRequestClose?()
-            return nil
         case "n":
             addNewWeek()
             return nil

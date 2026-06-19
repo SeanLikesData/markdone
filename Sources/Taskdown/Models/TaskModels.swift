@@ -87,3 +87,56 @@ struct TaskdownData: Codable {
     var weeks: [Week] = []
     var template: Template = Template()
 }
+
+// MARK: - Tolerant decoding
+//
+// Synthesized `Decodable` throws on any missing key, which would make a future
+// schema change (a new field) reject an older `data.json` and reset the user's
+// data. These hand-written decoders fall back to defaults for missing or
+// malformed fields and ignore unknown keys, so the on-disk format can evolve
+// without losing data. Encoding stays synthesized.
+
+extension DayPlan {
+    enum CodingKeys: String, CodingKey { case weekday, markdown }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        weekday = (try? c.decode(Weekday.self, forKey: .weekday)) ?? .monday
+        markdown = (try? c.decode(String.self, forKey: .markdown)) ?? ""
+    }
+}
+
+extension Week {
+    enum CodingKeys: String, CodingKey {
+        case id, weekStart, bigThreeMarkdown, weekTasksMarkdown, days
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? c.decode(UUID.self, forKey: .id)) ?? UUID()
+        weekStart = (try? c.decode(Date.self, forKey: .weekStart)) ?? Date()
+        bigThreeMarkdown = (try? c.decode(String.self, forKey: .bigThreeMarkdown)) ?? ""
+        weekTasksMarkdown = (try? c.decode(String.self, forKey: .weekTasksMarkdown)) ?? ""
+        days = (try? c.decode([DayPlan].self, forKey: .days))
+            ?? Weekday.allCases.map { DayPlan(weekday: $0) }
+    }
+}
+
+extension Template {
+    enum CodingKeys: String, CodingKey {
+        case bigThreeMarkdown, weekTasksMarkdown, dayMarkdown
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        bigThreeMarkdown = (try? c.decode(String.self, forKey: .bigThreeMarkdown)) ?? ""
+        weekTasksMarkdown = (try? c.decode(String.self, forKey: .weekTasksMarkdown)) ?? ""
+        dayMarkdown = (try? c.decode([Int: String].self, forKey: .dayMarkdown)) ?? [:]
+    }
+}
+
+extension TaskdownData {
+    enum CodingKeys: String, CodingKey { case weeks, template }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        weeks = (try? c.decode([Week].self, forKey: .weeks)) ?? []
+        template = (try? c.decode(Template.self, forKey: .template)) ?? Template()
+    }
+}

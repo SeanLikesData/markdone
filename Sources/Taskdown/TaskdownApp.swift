@@ -20,7 +20,7 @@ enum Main {
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let menuBarGap: CGFloat = 1
     private let panelSize = NSSize(width: 780, height: 660)
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -53,6 +53,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         installMainMenu()
         createPanel()
+        // The key monitor stays installed for the whole session so app-level
+        // shortcuts (day navigation, New Week, Cmd+W) work whether the popover
+        // or the pop-out window is focused.
+        installKeyMonitor()
 
         defaultsObserver = NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification,
@@ -90,11 +94,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let fileMenuItem = NSMenuItem()
         let fileMenu = NSMenu(title: "File")
-        fileMenu.addItem(
+        let newWeekItem = fileMenu.addItem(
             withTitle: "New Week",
             action: #selector(newWeekMenu),
             keyEquivalent: "n"
         )
+        newWeekItem.target = self
         fileMenu.addItem(NSMenuItem.separator())
         fileMenu.addItem(
             withTitle: "Close",
@@ -157,11 +162,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 rootView: ContentView(inWindow: true)
                     .environmentObject(store)
             )
+            win.delegate = self
             win.center()
             window = win
         }
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard let closing = notification.object as? NSWindow, closing == window else { return }
+        store.flushPendingSave()
+        window = nil
     }
 
     private func createPanel() {
@@ -203,7 +215,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         positionPanel()
         panel.orderFrontRegardless()
         panel.makeKey()
-        installKeyMonitor()
         updateGlobalMonitor()
     }
 
@@ -211,7 +222,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         store.flushPendingSave()
         panel?.orderOut(nil)
         removeGlobalMonitor()
-        removeKeyMonitor()
     }
 
     private func positionPanel() {
@@ -244,6 +254,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         removeKeyMonitor()
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
             guard let self else { return event }
+            // Cmd+W closes whichever surface is focused, with the popover's
+            // proper cleanup. When a sheet is open it falls through to the store.
+            if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+               event.charactersIgnoringModifiers?.lowercased() == "w",
+               self.store.activeSheet == nil {
+                if self.window?.isKeyWindow == true {
+                    self.window?.performClose(nil)
+                    return nil
+                }
+                if self.panel?.isVisible == true {
+                    self.closePopover()
+                    return nil
+                }
+            }
             return self.store.handleKeyDown(event)
         }
     }

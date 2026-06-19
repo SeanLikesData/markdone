@@ -100,10 +100,15 @@ final class MarkdownTextView: NSTextView {
         guard markerRect.contains(containerPoint) else { return false }
 
         let replacement = marker.toggledReplacement
-        if shouldChangeText(in: marker.bracketRange, replacementString: replacement) {
-            textStorage.replaceCharacters(in: marker.bracketRange, with: replacement)
-            didChangeText()
+        // If the change is vetoed, fall through to normal click handling so the
+        // user can still place the cursor.
+        guard shouldChangeText(in: marker.bracketRange, replacementString: replacement) else {
+            return false
         }
+        textStorage.beginEditing()
+        textStorage.replaceCharacters(in: marker.bracketRange, with: replacement)
+        textStorage.endEditing()
+        didChangeText()
         return true
     }
 }

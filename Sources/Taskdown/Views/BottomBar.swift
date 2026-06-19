@@ -107,6 +107,7 @@ extension WeekStore {
         switch saveState {
         case .saved: return "Saved"
         case .saving: return "Saving…"
+        case .failed: return "Save failed"
         }
     }
 }

@@ -21,6 +21,7 @@ enum ActiveSheet: Identifiable {
 enum SaveState {
     case saved
     case saving
+    case failed
 }
 
 /// The single source of truth: all saved weeks, the template, the current week
@@ -71,7 +72,18 @@ final class WeekStore: ObservableObject {
             data = try JSONDecoder().decode(TaskdownData.self, from: bytes)
         } catch {
             logger.error("Failed to load data: \(error.localizedDescription, privacy: .public)")
+            // Preserve the unreadable file so the fresh week we are about to
+            // create and save never silently destroys recoverable data.
+            backUpUnreadableFile(at: url)
         }
+    }
+
+    private func backUpUnreadableFile(at url: URL) {
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let backup = url.deletingLastPathComponent()
+            .appendingPathComponent("data-unreadable-\(timestamp).json")
+        try? FileManager.default.copyItem(at: url, to: backup)
+        logger.error("Backed up unreadable data to \(backup.lastPathComponent, privacy: .public)")
     }
 
     /// Make sure at least the current calendar week exists, and select a week
@@ -290,17 +302,25 @@ final class WeekStore: ObservableObject {
     }
 
     /// Present a save panel and write the Markdown export to the chosen file.
+    /// Snapshots the Markdown first and dismisses the Settings sheet, then runs
+    /// the save panel non-blocking so it does not nest inside the sheet's modal
+    /// session.
     func exportMarkdownToFile() {
+        let markdown = exportMarkdown()
+        activeSheet = nil
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "taskdown-export.md"
         panel.allowedContentTypes = [.init(filenameExtension: "md") ?? .plainText]
         panel.canCreateDirectories = true
         panel.title = "Export Tasks to Markdown"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            try exportMarkdown().write(to: url, atomically: true, encoding: .utf8)
-        } catch {
-            logger.error("Failed to export Markdown: \(error.localizedDescription, privacy: .public)")
+        NSApp.activate(ignoringOtherApps: true)
+        panel.begin { [weak self] response in
+            guard response == .OK, let url = panel.url else { return }
+            do {
+                try markdown.write(to: url, atomically: true, encoding: .utf8)
+            } catch {
+                self?.logger.error("Failed to export Markdown: \(error.localizedDescription, privacy: .public)")
+            }
         }
     }
 
@@ -331,6 +351,7 @@ final class WeekStore: ObservableObject {
             try bytes.write(to: dataURL, options: .atomic)
             saveState = .saved
         } catch {
+            saveState = .failed
             logger.error("Failed to save data: \(error.localizedDescription, privacy: .public)")
         }
     }
