@@ -162,6 +162,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 rootView: ContentView(inWindow: true)
                     .environmentObject(store)
             )
+            // Setting the hosting controller collapses the window to its minimum
+            // because the SwiftUI content has no intrinsic size, so restore the
+            // intended size afterward.
+            win.setContentSize(NSSize(width: 980, height: 720))
             win.delegate = self
             win.center()
             window = win
