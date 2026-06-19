@@ -47,6 +47,10 @@ struct ContentView: View {
                 VisualEffectView(material: .hudWindow)
                 Color.black.opacity(0.30)
             }
+            // Fill the whole window, including under the window's title bar, so
+            // the traffic-light buttons sit on the frosted material instead of
+            // floating over empty space.
+            .ignoresSafeArea()
         )
         .clipShape(RoundedRectangle(cornerRadius: inWindow ? 0 : 16, style: .continuous))
         .overlay(

@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// The bottom bar: saved-week count on the left; save status, Template, help,
 /// and settings on the right.
@@ -34,6 +35,11 @@ struct BottomBar: View {
             iconButton(systemName: "gearshape", title: nil) {
                 store.activeSheet = .settings
             }
+
+            iconButton(systemName: "power", title: nil) {
+                NSApp.terminate(nil)
+            }
+            .help("Quit Taskdown (⌘Q)")
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)

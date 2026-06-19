@@ -1,10 +1,22 @@
 import SwiftUI
 import AppKit
 
+/// The `.taskdownListMarker` attribute values the styler emits. Checkboxes are
+/// drawn as SF Symbols; bullets are drawn as text.
+enum ListMarker {
+    static let checked = "☑"
+    static let unchecked = "☐"
+}
+
 /// Draws the replacement glyphs (checkbox boxes and bullets) that the
 /// `MarkdownStyler` marks with the `.taskdownListMarker` attribute, on top of
-/// the (invisible) source characters.
+/// the (invisible) source characters. Checkboxes render as crisp, slightly
+/// oversized SF Symbols so they read as real, clickable controls.
 final class MarkdownLayoutManager: NSLayoutManager {
+    private static var imageCache: [String: NSImage] = [:]
+    private static let uncheckedColor = NSColor(white: 0.62, alpha: 1.0)
+    private static let checkedColor = NSColor(srgbRed: 0.45, green: 0.80, blue: 0.52, alpha: 1.0)
+
     override func drawGlyphs(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
         super.drawGlyphs(forGlyphRange: glyphsToShow, at: origin)
         guard let textStorage else { return }
@@ -35,18 +47,62 @@ final class MarkdownLayoutManager: NSLayoutManager {
                 at: range.location,
                 effectiveRange: nil
             ) as? NSFont ?? .systemFont(ofSize: NSFont.systemFontSize)
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: font,
-                .foregroundColor: NSColor.textColor
-            ]
-            let symbolSize = (symbol as NSString).size(withAttributes: attributes)
-            let point = NSPoint(
-                x: origin.x + lineFragment.minX + location.x,
-                y: origin.y + lineFragment.minY
-                    + ((lineFragment.height - symbolSize.height) / 2)
-            )
-            (symbol as NSString).draw(at: point, withAttributes: attributes)
+
+            if symbol == ListMarker.checked || symbol == ListMarker.unchecked {
+                let checked = symbol == ListMarker.checked
+                // Oversize the box relative to the text so it is easy to see and
+                // click; the styler reserves a fixed slot wide enough for it.
+                let boxSize = (font.pointSize * 1.25).rounded()
+                guard let image = Self.checkboxImage(checked: checked, pointSize: boxSize) else { return }
+                let drawRect = NSRect(
+                    x: origin.x + lineFragment.minX + location.x + 1,
+                    y: origin.y + lineFragment.minY + ((lineFragment.height - image.size.height) / 2),
+                    width: image.size.width,
+                    height: image.size.height
+                )
+                image.draw(
+                    in: drawRect,
+                    from: .zero,
+                    operation: .sourceOver,
+                    fraction: 1,
+                    respectFlipped: true,
+                    hints: nil
+                )
+            } else {
+                let attributes: [NSAttributedString.Key: Any] = [
+                    .font: font,
+                    .foregroundColor: NSColor.textColor
+                ]
+                let symbolSize = (symbol as NSString).size(withAttributes: attributes)
+                let point = NSPoint(
+                    x: origin.x + lineFragment.minX + location.x,
+                    y: origin.y + lineFragment.minY
+                        + ((lineFragment.height - symbolSize.height) / 2)
+                )
+                (symbol as NSString).draw(at: point, withAttributes: attributes)
+            }
         }
+    }
+
+    /// A cached, tinted SF Symbol checkbox image. Fixed colors (the app is always
+    /// dark) keep it crisp and predictable.
+    static func checkboxImage(checked: Bool, pointSize: CGFloat) -> NSImage? {
+        let key = "\(checked)-\(Int(pointSize))"
+        if let cached = imageCache[key] { return cached }
+        let name = checked ? "checkmark.square.fill" : "square"
+        let config = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .medium)
+        guard let base = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(config) else { return nil }
+        let color = checked ? checkedColor : uncheckedColor
+        let tinted = NSImage(size: base.size, flipped: false) { rect in
+            base.draw(in: rect)
+            color.set()
+            rect.fill(using: .sourceAtop)
+            return true
+        }
+        tinted.isTemplate = false
+        imageCache[key] = tinted
+        return tinted
     }
 }
 
@@ -110,6 +166,31 @@ final class MarkdownTextView: NSTextView {
         textStorage.endEditing()
         didChangeText()
         return true
+    }
+
+    // Show a pointing-hand cursor over rendered checkboxes so they read as
+    // clickable, instead of the text I-beam.
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        guard let layoutManager, let textContainer, let textStorage else { return }
+        let text = string as NSString
+        let inset = textContainerOrigin
+        textStorage.enumerateAttribute(
+            .taskdownListMarker,
+            in: NSRange(location: 0, length: textStorage.length),
+            options: []
+        ) { value, range, _ in
+            guard let symbol = value as? String,
+                  symbol == ListMarker.checked || symbol == ListMarker.unchecked
+            else { return }
+            let lineRange = text.lineRange(for: range)
+            guard let marker = MarkdownTasks.marker(in: text, lineRange: lineRange) else { return }
+            let glyphRange = layoutManager.glyphRange(forCharacterRange: marker.hitRange, actualCharacterRange: nil)
+            var rect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
+            rect.origin.x += inset.x
+            rect.origin.y += inset.y
+            self.addCursorRect(rect, cursor: .pointingHand)
+        }
     }
 }
 
@@ -287,6 +368,9 @@ struct MarkdownTextEditor: NSViewRepresentable {
                 .font: font,
                 .foregroundColor: NSColor.textColor
             ]
+            // Checkbox positions changed, so rebuild the pointing-hand cursor
+            // rects.
+            textView.window?.invalidateCursorRects(for: textView)
             isUpdatingAppearance = false
         }
     }

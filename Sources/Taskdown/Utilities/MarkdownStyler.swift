@@ -191,12 +191,14 @@ enum MarkdownStyler {
                 && line.substring(with: checkedRange).lowercased() == "x"
             let r2 = match.range(at: 2)
             let symbolRange = r2.location != NSNotFound ? r2 : match.range(at: 3)
-            renderListMarker(
-                match: match,
-                symbolRange: symbolRange,
+            renderTaskMarker(
+                symbolLocalRange: symbolRange,
+                matchRange: match.range,
+                line: line,
                 in: range,
                 textStorage: textStorage,
-                symbol: checked ? "☑" : "☐"
+                baseFont: baseFont,
+                checked: checked
             )
             // Dim and strike through a completed task's text so done work reads
             // as done at a glance.
@@ -243,6 +245,47 @@ enum MarkdownStyler {
                 range: absolute(match.range, within: range)
             )
         }
+    }
+
+    /// Render a task checkbox. The marker syntax is hidden and a fixed-width
+    /// "slot" is reserved with kerning on the symbol character, which is kept at
+    /// the base font so the line keeps its normal height (even when the line is
+    /// just an empty `[ ]`). The layout manager draws the box in that slot.
+    private static func renderTaskMarker(
+        symbolLocalRange: NSRange,
+        matchRange: NSRange,
+        line: NSString,
+        in lineRange: NSRange,
+        textStorage: NSTextStorage,
+        baseFont: NSFont,
+        checked: Bool
+    ) {
+        let symbolStart = symbolLocalRange.location
+        let matchEnd = matchRange.location + matchRange.length
+
+        // Collapse everything after the symbol character (keeps leading
+        // indentation intact so nested tasks still indent).
+        let afterSymbol = NSRange(
+            location: symbolStart + 1,
+            length: max(0, matchEnd - (symbolStart + 1))
+        )
+        if afterSymbol.length > 0 {
+            hide(absolute(afterSymbol, within: lineRange), in: textStorage)
+        }
+
+        let symbolChar = line.substring(with: symbolLocalRange) as NSString
+        let charWidth = symbolChar.size(withAttributes: [.font: baseFont]).width
+        let slot = (baseFont.pointSize * 1.6).rounded() + 2
+        let symbolAbs = absolute(NSRange(location: symbolStart, length: 1), within: lineRange)
+        textStorage.addAttributes(
+            [
+                .font: baseFont,
+                .foregroundColor: NSColor.clear,
+                .kern: max(2, slot - charWidth),
+                .taskdownListMarker: checked ? ListMarker.checked : ListMarker.unchecked
+            ],
+            range: symbolAbs
+        )
     }
 
     private static func renderListMarker(

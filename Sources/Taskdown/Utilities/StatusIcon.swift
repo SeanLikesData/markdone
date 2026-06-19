@@ -1,8 +1,10 @@
 import AppKit
 
-/// A custom template menu bar icon for Taskdown: a small checklist — a rounded
-/// card with a checkmark on the top line and two plain lines below. Drawn as a
-/// monochrome template image so macOS tints it for light and dark menu bars.
+/// The menu bar icon for Taskdown: the Markdown checkbox syntax itself — a pair
+/// of square brackets with a checkmark bursting slightly out of them, "[✓]".
+/// It is the literal thing the app is about (clickable Markdown checkboxes).
+/// Drawn as a monochrome template image so macOS tints it for light and dark
+/// menu bars.
 enum StatusIcon {
     static var taskdown: NSImage {
         let size = NSSize(width: 18, height: 18)
@@ -12,37 +14,41 @@ enum StatusIcon {
         defer { image.unlockFocus() }
 
         NSColor.black.setStroke()
-        NSColor.black.setFill()
 
-        let body = NSBezierPath(roundedRect: NSRect(x: 2.5, y: 2.5, width: 13.0, height: 13.0), xRadius: 3.0, yRadius: 3.0)
-        body.lineWidth = 1.6
-        body.stroke()
+        // Left bracket "[".
+        let left = NSBezierPath()
+        left.move(to: NSPoint(x: 6.2, y: 14.0))
+        left.line(to: NSPoint(x: 3.6, y: 14.0))
+        left.line(to: NSPoint(x: 3.6, y: 4.0))
+        left.line(to: NSPoint(x: 6.2, y: 4.0))
+        left.lineWidth = 1.6
+        left.lineJoinStyle = .miter
+        left.lineCapStyle = .round
+        left.stroke()
 
-        // Checkmark on the first line.
+        // Right bracket "]".
+        let right = NSBezierPath()
+        right.move(to: NSPoint(x: 11.8, y: 14.0))
+        right.line(to: NSPoint(x: 14.4, y: 14.0))
+        right.line(to: NSPoint(x: 14.4, y: 4.0))
+        right.line(to: NSPoint(x: 11.8, y: 4.0))
+        right.lineWidth = 1.6
+        right.lineJoinStyle = .miter
+        right.lineCapStyle = .round
+        right.stroke()
+
+        // Bold checkmark, sitting a touch high so it "bursts" out of the box.
         let check = NSBezierPath()
-        check.move(to: NSPoint(x: 5.0, y: 11.3))
-        check.line(to: NSPoint(x: 6.6, y: 9.8))
-        check.line(to: NSPoint(x: 9.2, y: 12.6))
-        check.lineWidth = 1.5
+        check.move(to: NSPoint(x: 5.8, y: 8.6))
+        check.line(to: NSPoint(x: 8.3, y: 5.8))
+        check.line(to: NSPoint(x: 12.6, y: 13.2))
+        check.lineWidth = 2.1
         check.lineCapStyle = .round
         check.lineJoinStyle = .round
         check.stroke()
 
-        drawLine(from: NSPoint(x: 10.4, y: 11.0), to: NSPoint(x: 13.0, y: 11.0))
-        drawLine(from: NSPoint(x: 5.0, y: 7.4), to: NSPoint(x: 13.0, y: 7.4))
-        drawLine(from: NSPoint(x: 5.0, y: 5.0), to: NSPoint(x: 11.2, y: 5.0))
-
         image.isTemplate = true
         image.accessibilityDescription = "Taskdown"
         return image
-    }
-
-    private static func drawLine(from start: NSPoint, to end: NSPoint) {
-        let path = NSBezierPath()
-        path.move(to: start)
-        path.line(to: end)
-        path.lineCapStyle = .round
-        path.lineWidth = 1.35
-        path.stroke()
     }
 }
